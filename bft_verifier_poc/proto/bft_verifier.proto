@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package bft_verifier;
+
+// Verifier service - receives verification requests from coordinator
+service Verifier {
+  rpc Verify(VerificationRequest) returns (VerifierVote);
+  rpc Heartbeat(Empty) returns (VerifierStatus);
+}
+
+// Coordinator service - receives metric submissions from agents
+service Coordinator {
+  rpc SubmitMetrics(MetricSubmission) returns (SubmissionAck);
+  rpc QueryConsensus(VerificationQuery) returns (ConsensusOutcome);
+}
+
+// Core data structures
+
+message RequestMetrics {
+  uint32 prompt_tokens = 1;
+  uint32 completion_tokens = 2;
+  uint64 e2e_latency_ms = 3;
+  double estimated_cost = 4;
+}
+
+message TpmQuote {
+  map<uint32, bytes> pcr_values = 1;
+  bytes quote_signature = 2;
+  bytes nonce = 3;
+}
+
+message MetricSubmission {
+  string agent_id = 1;
+  string request_id = 2;
+  uint64 timestamp = 3;
+  RequestMetrics metrics = 4;
+  TpmQuote quote = 5;
+}
+
+// Verification protocol
+
+message VerificationRequest {
+  string verification_id = 1;
+  uint64 epoch = 2;
+  MetricSubmission submission = 3;
+}
+
+enum VerificationResult {
+  PASS = 0;
+  FAIL = 1;
+}
+
+message VerifierVote {
+  string verifier_id = 1;
+  string verification_id = 2;
+  VerificationResult result = 3;
+  string reason = 4;
+  uint64 timestamp = 5;
+  bytes signature = 6;
+}
+
+// Consensus outcome
+
+message ConsensusOutcome {
+  string verification_id = 1;
+  uint64 epoch = 2;
+  repeated string committee = 3;
+  map<string, VerifierVote> votes = 4;
+  optional VerificationResult result = 5;
+  bool quorum_reached = 6;
+  uint64 timestamp = 7;
+}
+
+// Request/Response messages
+
+message SubmissionAck {
+  string verification_id = 1;
+  bool accepted = 2;
+}
+
+message VerificationQuery {
+  string verification_id = 1;
+}
+
+message Empty {}
+
+message VerifierStatus {
+  string verifier_id = 1;
+  bool healthy = 2;
+  uint64 verified_count = 3;
+}
