@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  coordinator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: coordinator
+    ports:
+      - "50051:50051"
+    environment:
+      - RUST_LOG=info
+      - LISTEN_ADDR=0.0.0.0:50051
+      - VRF_SEED=0000000000000000000000000000000000000000000000000000000000000000
+      - COMMITTEE_SIZE=3
+      - QUORUM=2
+      - VOTE_TIMEOUT_SECS=5
+      - EPOCH_DURATION_SECS=30
+      - VERIFIER_POOL_JSON=["verifier-1","verifier-2","verifier-3","verifier-4"]
+      - VERIFIER_ENDPOINTS_JSON={"verifier-1":"http://verifier-1:50052","verifier-2":"http://verifier-2:50053","verifier-3":"http://verifier-3:50054","verifier-4":"http://verifier-4:50055"}
+    networks:
+      - bft-network
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  verifier-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: verifier
+    environment:
+      - RUST_LOG=info
+      - VERIFIER_ID=verifier-1
+      - LISTEN_ADDR=0.0.0.0:50052
+      # Agent public keys will be configured via volume mount or environment
+      - AGENT_KEYS_JSON={}
+    networks:
+      - bft-network
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  verifier-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: verifier
+    environment:
+      - RUST_LOG=info
+      - VERIFIER_ID=verifier-2
+      - LISTEN_ADDR=0.0.0.0:50053
+      - AGENT_KEYS_JSON={}
+    networks:
+      - bft-network
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  verifier-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: verifier
+    environment:
+      - RUST_LOG=info
+      - VERIFIER_ID=verifier-3
+      - LISTEN_ADDR=0.0.0.0:50054
+      - AGENT_KEYS_JSON={}
+    networks:
+      - bft-network
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  verifier-4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: verifier
+    environment:
+      - RUST_LOG=info
+      - VERIFIER_ID=verifier-4
+      - LISTEN_ADDR=0.0.0.0:50055
+      - AGENT_KEYS_JSON={}
+    networks:
+      - bft-network
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: agent
+    environment:
+      - RUST_LOG=info
+      - AGENT_ID=agent-1
+      - COORDINATOR_ENDPOINT=http://coordinator:50051
+      - MODE=continuous
+      - SUBMISSION_INTERVAL_SECS=5
+    networks:
+      - bft-network
+    depends_on:
+      - coordinator
+      - verifier-1
+      - verifier-2
+      - verifier-3
+      - verifier-4
+
+networks:
+  bft-network:
+    driver: bridge

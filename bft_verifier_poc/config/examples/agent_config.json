@@ -1,0 +1,8 @@
+{
+  "agent_id": "agent-1",
+  "coordinator_endpoint": "http://localhost:50051",
+  "signing_key_hex": "",
+  "submission_interval_secs": 5,
+  "mode": "continuous",
+  "request_count": 10
+}

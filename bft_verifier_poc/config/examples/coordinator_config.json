@@ -1,0 +1,20 @@
+{
+  "listen_addr": "0.0.0.0:50051",
+  "vrf_seed_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+  "committee_size": 3,
+  "quorum": 2,
+  "vote_timeout_secs": 5,
+  "epoch_duration_secs": 30,
+  "verifier_pool": [
+    "verifier-1",
+    "verifier-2",
+    "verifier-3",
+    "verifier-4"
+  ],
+  "verifier_endpoints": {
+    "verifier-1": "http://localhost:50052",
+    "verifier-2": "http://localhost:50053",
+    "verifier-3": "http://localhost:50054",
+    "verifier-4": "http://localhost:50055"
+  }
+}

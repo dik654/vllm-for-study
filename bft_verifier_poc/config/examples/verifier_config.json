@@ -1,0 +1,8 @@
+{
+  "verifier_id": "verifier-1",
+  "listen_addr": "0.0.0.0:50052",
+  "signing_key_hex": "",
+  "agent_public_keys": {
+    "agent-1": "REPLACE_WITH_AGENT_PUBLIC_KEY_HEX"
+  }
+}
