@@ -1,3 +1,4 @@
+use crate::connection_pool::VerifierConnectionPool;
 use crate::consensus::ConsensusManager;
 use crate::epoch::EpochManager;
 use crate::vrf::VrfSelector;
@@ -6,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub mod bft_verifier {
     tonic::include_proto!("bft_verifier");
@@ -29,11 +30,14 @@ pub struct CoordinatorService {
     /// Verifier pool (list of all available verifiers)
     verifier_pool: Arc<RwLock<Vec<String>>>,
 
-    /// Verifier gRPC clients (verifier_id -> endpoint)
-    verifier_endpoints: Arc<HashMap<String, String>>,
+    /// Connection pool for verifier gRPC clients
+    connection_pool: Arc<VerifierConnectionPool>,
 
     /// Results cache (verification_id -> consensus outcome)
     results_cache: Arc<RwLock<HashMap<String, ConsensusOutcome>>>,
+
+    /// Enable speculative execution (pre-warm next epoch's committee)
+    speculative_execution: bool,
 }
 
 impl CoordinatorService {
@@ -44,13 +48,36 @@ impl CoordinatorService {
         verifier_pool: Vec<String>,
         verifier_endpoints: HashMap<String, String>,
     ) -> Self {
+        Self::with_options(
+            vrf_selector,
+            consensus_manager,
+            epoch_manager,
+            verifier_pool,
+            verifier_endpoints,
+            true, // Enable speculative execution by default
+        )
+    }
+
+    pub fn with_options(
+        vrf_selector: VrfSelector,
+        consensus_manager: ConsensusManager,
+        epoch_manager: EpochManager,
+        verifier_pool: Vec<String>,
+        verifier_endpoints: HashMap<String, String>,
+        speculative_execution: bool,
+    ) -> Self {
+        // Create connection pool
+        let max_connections = verifier_pool.len().max(10);
+        let connection_pool = VerifierConnectionPool::new(verifier_endpoints, max_connections);
+
         Self {
             vrf_selector: Arc::new(RwLock::new(vrf_selector)),
             consensus_manager: Arc::new(consensus_manager),
             epoch_manager: Arc::new(epoch_manager),
             verifier_pool: Arc::new(RwLock::new(verifier_pool)),
-            verifier_endpoints: Arc::new(verifier_endpoints),
+            connection_pool: Arc::new(connection_pool),
             results_cache: Arc::new(RwLock::new(HashMap::new())),
+            speculative_execution,
         }
     }
 
@@ -132,6 +159,25 @@ impl Coordinator for CoordinatorService {
             "Selected committee"
         );
 
+        // Speculative execution: pre-warm next epoch's committee
+        if self.speculative_execution {
+            let next_epoch = current_epoch + 1;
+            let next_committee = selector.select_committee(next_epoch, &pool);
+
+            if !next_committee.is_empty() {
+                debug!(
+                    next_epoch,
+                    next_committee_size = next_committee.len(),
+                    "Pre-warming next epoch's committee"
+                );
+
+                let connection_pool = Arc::clone(&self.connection_pool);
+                tokio::spawn(async move {
+                    connection_pool.warm_up(&next_committee).await;
+                });
+            }
+        }
+
         // Create verification request
         let verification_request = bft_verifier::VerificationRequest {
             verification_id: verification_id.clone(),
@@ -143,36 +189,32 @@ impl Coordinator for CoordinatorService {
         let (vote_tx, mut vote_rx) = tokio::sync::mpsc::channel(committee.len());
 
         for verifier_id in &committee {
-            if let Some(endpoint) = self.verifier_endpoints.get(verifier_id) {
-                let endpoint = endpoint.clone();
-                let verifier_id = verifier_id.clone();
-                let req = verification_request.clone();
-                let timeout_duration = self.consensus_manager.vote_timeout();
-                let tx = vote_tx.clone();
+            let verifier_id = verifier_id.clone();
+            let req = verification_request.clone();
+            let timeout_duration = self.consensus_manager.vote_timeout();
+            let tx = vote_tx.clone();
+            let connection_pool = Arc::clone(&self.connection_pool);
 
-                tokio::spawn(async move {
-                    match tokio::time::timeout(
-                        timeout_duration,
-                        Self::request_vote(endpoint, req),
-                    )
-                    .await
-                    {
-                        Ok(Ok(vote)) => {
-                            let _ = tx.send(Some((verifier_id, vote))).await;
-                        }
-                        Ok(Err(e)) => {
-                            warn!("Failed to get vote from {}: {}", verifier_id, e);
-                            let _ = tx.send(None).await;
-                        }
-                        Err(_) => {
-                            warn!("Timeout getting vote from {}", verifier_id);
-                            let _ = tx.send(None).await;
-                        }
+            tokio::spawn(async move {
+                match tokio::time::timeout(
+                    timeout_duration,
+                    Self::request_vote_with_pool(connection_pool, verifier_id.clone(), req),
+                )
+                .await
+                {
+                    Ok(Ok(vote)) => {
+                        let _ = tx.send(Some((verifier_id, vote))).await;
                     }
-                });
-            } else {
-                warn!("No endpoint found for verifier: {}", verifier_id);
-            }
+                    Ok(Err(e)) => {
+                        warn!("Failed to get vote from {}: {}", verifier_id, e);
+                        let _ = tx.send(None).await;
+                    }
+                    Err(_) => {
+                        warn!("Timeout getting vote from {}", verifier_id);
+                        let _ = tx.send(None).await;
+                    }
+                }
+            });
         }
 
         // Drop sender so receiver knows when all votes are sent
@@ -302,7 +344,25 @@ impl Coordinator for CoordinatorService {
 }
 
 impl CoordinatorService {
-    /// Request vote from a verifier (helper function)
+    /// Request vote from a verifier using connection pool
+    ///
+    /// Uses the connection pool to reuse existing connections,
+    /// avoiding connection overhead on each request.
+    async fn request_vote_with_pool(
+        connection_pool: Arc<VerifierConnectionPool>,
+        verifier_id: String,
+        req: bft_verifier::VerificationRequest,
+    ) -> Result<bft_verifier::VerifierVote, Box<dyn std::error::Error + Send + Sync>> {
+        // Get client from pool (reuses existing connection or creates new one)
+        let mut client = connection_pool.get_client(&verifier_id).await?;
+
+        // Send verification request
+        let response = client.verify(req).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Request vote from a verifier (legacy - direct connection)
+    #[allow(dead_code)]
     async fn request_vote(
         endpoint: String,
         req: bft_verifier::VerificationRequest,
