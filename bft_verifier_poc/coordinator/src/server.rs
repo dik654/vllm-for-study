@@ -139,8 +139,8 @@ impl Coordinator for CoordinatorService {
             submission: Some(submission),
         };
 
-        // Collect votes from committee (in parallel)
-        let mut vote_futures = Vec::new();
+        // Collect votes from committee (in parallel with early termination)
+        let (vote_tx, mut vote_rx) = tokio::sync::mpsc::channel(committee.len());
 
         for verifier_id in &committee {
             if let Some(endpoint) = self.verifier_endpoints.get(verifier_id) {
@@ -148,52 +148,102 @@ impl Coordinator for CoordinatorService {
                 let verifier_id = verifier_id.clone();
                 let req = verification_request.clone();
                 let timeout_duration = self.consensus_manager.vote_timeout();
+                let tx = vote_tx.clone();
 
-                vote_futures.push(tokio::spawn(async move {
+                tokio::spawn(async move {
                     match tokio::time::timeout(
                         timeout_duration,
                         Self::request_vote(endpoint, req),
                     )
                     .await
                     {
-                        Ok(Ok(vote)) => Some((verifier_id, vote)),
+                        Ok(Ok(vote)) => {
+                            let _ = tx.send(Some((verifier_id, vote))).await;
+                        }
                         Ok(Err(e)) => {
                             warn!("Failed to get vote from {}: {}", verifier_id, e);
-                            None
+                            let _ = tx.send(None).await;
                         }
                         Err(_) => {
                             warn!("Timeout getting vote from {}", verifier_id);
-                            None
+                            let _ = tx.send(None).await;
                         }
                     }
-                }));
+                });
             } else {
                 warn!("No endpoint found for verifier: {}", verifier_id);
             }
         }
 
-        // Wait for all votes
-        let mut votes = HashMap::new();
-        for future in vote_futures {
-            if let Ok(Some((verifier_id, proto_vote))) = future.await {
-                // Convert proto vote to common type
-                let vote = VerifierVote::new(
-                    proto_vote.verifier_id,
-                    proto_vote.verification_id,
-                    if proto_vote.result == 0 {
-                        VerificationResult::Pass
-                    } else {
-                        VerificationResult::Fail
-                    },
-                    proto_vote.reason,
-                    proto_vote.timestamp,
-                    proto_vote.signature,
-                );
-                votes.insert(verifier_id, vote);
-            }
-        }
+        // Drop sender so receiver knows when all votes are sent
+        drop(vote_tx);
 
-        info!(votes_received = votes.len(), "Collected votes");
+        // Collect votes with early termination
+        let mut votes = HashMap::new();
+        let mut votes_received = 0;
+        let total_verifiers = committee.len();
+        let global_timeout = tokio::time::sleep(self.consensus_manager.vote_timeout());
+        tokio::pin!(global_timeout);
+
+        let early_terminated = loop {
+            tokio::select! {
+                Some(vote_result) = vote_rx.recv() => {
+                    votes_received += 1;
+
+                    if let Some((verifier_id, proto_vote)) = vote_result {
+                        // Convert proto vote to common type
+                        let vote = VerifierVote::new(
+                            proto_vote.verifier_id,
+                            proto_vote.verification_id,
+                            if proto_vote.result == 0 {
+                                VerificationResult::Pass
+                            } else {
+                                VerificationResult::Fail
+                            },
+                            proto_vote.reason,
+                            proto_vote.timestamp,
+                            proto_vote.signature,
+                        );
+                        votes.insert(verifier_id, vote);
+
+                        // Check for early consensus
+                        if let Some(early_result) = self.consensus_manager.has_early_consensus(&votes) {
+                            info!(
+                                votes_collected = votes.len(),
+                                total_verifiers,
+                                result = ?early_result,
+                                "Early consensus reached!"
+                            );
+                            break true;
+                        }
+                    }
+
+                    // All votes received
+                    if votes_received >= total_verifiers {
+                        info!(votes_collected = votes.len(), "All votes received");
+                        break false;
+                    }
+                }
+                _ = &mut global_timeout => {
+                    warn!(
+                        votes_collected = votes.len(),
+                        total_verifiers,
+                        "Global vote collection timeout"
+                    );
+                    break false;
+                }
+                else => {
+                    // Channel closed
+                    break false;
+                }
+            }
+        };
+
+        info!(
+            votes_received = votes.len(),
+            early_terminated,
+            "Collected votes"
+        );
 
         // Reach consensus
         let (result, reason) = self.consensus_manager.reach_consensus(&votes);
@@ -219,6 +269,7 @@ impl Coordinator for CoordinatorService {
         info!(
             verification_id = %verification_id,
             quorum_reached,
+            early_terminated,
             result = ?result,
             "Consensus complete: {}",
             reason

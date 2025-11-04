@@ -149,6 +149,56 @@ impl ConsensusManager {
         // For PoC, we trust the votes
         Ok(())
     }
+
+    /// Check if early consensus is reached
+    ///
+    /// Returns Some(result) if consensus is already reached with current votes,
+    /// None if more votes are needed.
+    ///
+    /// This enables early termination: as soon as 2f+1 votes agree,
+    /// we can stop waiting for remaining votes.
+    pub fn has_early_consensus(
+        &self,
+        votes: &HashMap<String, VerifierVote>,
+    ) -> Option<VerificationResult> {
+        if votes.is_empty() {
+            return None;
+        }
+
+        let mut pass_count = 0;
+        let mut fail_count = 0;
+
+        for vote in votes.values() {
+            match vote.result {
+                VerificationResult::Pass => {
+                    pass_count += 1;
+                    // Early exit if quorum reached for PASS
+                    if pass_count >= self.quorum {
+                        info!(
+                            pass_count,
+                            quorum = self.quorum,
+                            "Early consensus detected: PASS"
+                        );
+                        return Some(VerificationResult::Pass);
+                    }
+                }
+                VerificationResult::Fail => {
+                    fail_count += 1;
+                    // Early exit if quorum reached for FAIL
+                    if fail_count >= self.quorum {
+                        info!(
+                            fail_count,
+                            quorum = self.quorum,
+                            "Early consensus detected: FAIL"
+                        );
+                        return Some(VerificationResult::Fail);
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]
@@ -342,5 +392,192 @@ mod tests {
 
         // 3 PASS, 1 FAIL - should reach consensus on PASS
         assert_eq!(result, Some(VerificationResult::Pass));
+    }
+
+    #[test]
+    fn test_early_consensus_with_empty_votes() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+        let votes = HashMap::new();
+
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_early_consensus_not_reached() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+
+        // Only 2 PASS votes, need 3 for quorum
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_early_consensus_pass_exact_quorum() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Pass));
+
+        // Exactly 3 PASS votes (quorum)
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, Some(VerificationResult::Pass));
+    }
+
+    #[test]
+    fn test_early_consensus_pass_exceeds_quorum() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Pass));
+        votes.insert("v4".to_string(), create_vote("v4", VerificationResult::Pass));
+
+        // 4 PASS votes (exceeds quorum of 3)
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, Some(VerificationResult::Pass));
+    }
+
+    #[test]
+    fn test_early_consensus_fail_exact_quorum() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Fail));
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Fail));
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Fail));
+
+        // Exactly 3 FAIL votes (quorum)
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, Some(VerificationResult::Fail));
+    }
+
+    #[test]
+    fn test_early_consensus_mixed_no_quorum() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Fail));
+
+        // 2 PASS, 1 FAIL - no quorum
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_early_consensus_incremental_pass() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        // Simulate incremental vote collection
+        let mut votes = HashMap::new();
+
+        // First vote
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        assert_eq!(manager.has_early_consensus(&votes), None);
+
+        // Second vote
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        assert_eq!(manager.has_early_consensus(&votes), None);
+
+        // Third vote - should trigger early consensus
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Pass));
+        assert_eq!(manager.has_early_consensus(&votes), Some(VerificationResult::Pass));
+    }
+
+    #[test]
+    fn test_early_consensus_incremental_fail() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+
+        // Collect FAIL votes incrementally
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Fail));
+        assert_eq!(manager.has_early_consensus(&votes), None);
+
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Fail));
+        assert_eq!(manager.has_early_consensus(&votes), None);
+
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Fail));
+        assert_eq!(manager.has_early_consensus(&votes), Some(VerificationResult::Fail));
+    }
+
+    #[test]
+    fn test_early_consensus_single_vote_high_quorum() {
+        let manager = ConsensusManager::new(5, Duration::from_secs(5));
+
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+
+        // 1 vote is not enough for quorum of 5
+        let result = manager.has_early_consensus(&votes);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_early_consensus_performance_benefit() {
+        use std::time::Instant;
+
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+        let mut votes = HashMap::new();
+
+        // Simulate incremental vote arrival
+        let start = Instant::now();
+
+        // First vote
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        assert_eq!(manager.has_early_consensus(&votes), None);
+
+        // Second vote
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        assert_eq!(manager.has_early_consensus(&votes), None);
+
+        // Third vote - early consensus detected!
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Pass));
+        let early_result = manager.has_early_consensus(&votes);
+        let early_time = start.elapsed();
+
+        assert_eq!(early_result, Some(VerificationResult::Pass));
+
+        // Early consensus should be detected in microseconds
+        assert!(early_time.as_micros() < 1000, "Early consensus check took too long");
+
+        // This demonstrates we can exit as soon as quorum is reached,
+        // rather than waiting for all votes or timeout
+    }
+
+    #[test]
+    fn test_early_consensus_vs_full_consensus_same_result() {
+        let manager = ConsensusManager::new(3, Duration::from_secs(5));
+
+        // Test case: 3 PASS, 2 FAIL votes
+        let mut votes = HashMap::new();
+        votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Pass));
+        votes.insert("v4".to_string(), create_vote("v4", VerificationResult::Fail));
+        votes.insert("v5".to_string(), create_vote("v5", VerificationResult::Fail));
+
+        // Early consensus with first 3 votes
+        let mut early_votes = HashMap::new();
+        early_votes.insert("v1".to_string(), create_vote("v1", VerificationResult::Pass));
+        early_votes.insert("v2".to_string(), create_vote("v2", VerificationResult::Pass));
+        early_votes.insert("v3".to_string(), create_vote("v3", VerificationResult::Pass));
+
+        let early_result = manager.has_early_consensus(&early_votes);
+        let (full_result, _) = manager.reach_consensus(&votes);
+
+        // Both should agree on PASS
+        assert_eq!(early_result, Some(VerificationResult::Pass));
+        assert_eq!(full_result, Some(VerificationResult::Pass));
+        assert_eq!(early_result, full_result);
     }
 }

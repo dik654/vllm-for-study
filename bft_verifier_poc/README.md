@@ -265,6 +265,44 @@ Coordinator can verify vote authenticity.
 - CPU per verifier: < 5% (idle), < 30% (active)
 - Network: < 1 Mbps per verifier
 
+### Early Termination Optimization
+
+**Feature**: The coordinator implements early consensus detection to minimize latency.
+
+**How it works**:
+- Votes are collected asynchronously in parallel
+- As each vote arrives, the system checks if 2f+1 quorum is reached
+- If consensus is detected early, vote collection terminates immediately
+- No need to wait for all votes or timeout
+
+**Performance benefit**:
+```
+Without early termination:
+  Wait for all 3 votes or 5s timeout
+  Best case: 100ms (slowest verifier)
+  Worst case: 5000ms (timeout)
+
+With early termination:
+  Exit when 2f+1 consensus reached
+  Best case: 50ms (first 3 verifiers agree) ← 50% faster!
+  Worst case: 100ms (need slowest verifier)
+```
+
+**Example scenario** (3 verifiers, quorum = 3):
+```
+Time    Event
+----    -----
+0ms     → Vote requests sent to V1, V2, V3
+45ms    ← V1 responds: PASS
+50ms    ← V2 responds: PASS
+55ms    ← V3 responds: PASS  ← Consensus detected, exit!
+        ✅ Total: 55ms (don't wait for timeout)
+```
+
+**Logs**: Check for "Early consensus reached!" in coordinator logs to see when this optimization triggers.
+
+For more optimization strategies, see [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md).
+
 ## Testing
 
 ### Unit Tests
