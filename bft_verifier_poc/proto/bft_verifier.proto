@@ -35,6 +35,7 @@ message MetricSubmission {
   uint64 timestamp = 3;
   RequestMetrics metrics = 4;
   TpmQuote quote = 5;
+  bool async_mode = 6;  // If true, return immediately and verify in background
 }
 
 // Verification protocol
@@ -73,9 +74,17 @@ message ConsensusOutcome {
 
 // Request/Response messages
 
+enum VerificationStatus {
+  PENDING = 0;   // Async mode: verification in progress
+  ACCEPTED = 1;  // Sync mode: verification passed
+  REJECTED = 2;  // Sync mode: verification failed
+}
+
 message SubmissionAck {
   string verification_id = 1;
-  bool accepted = 2;
+  bool accepted = 2;  // Deprecated: use status instead
+  VerificationStatus status = 3;
+  string message = 4;  // Human-readable status message
 }
 
 message VerificationQuery {

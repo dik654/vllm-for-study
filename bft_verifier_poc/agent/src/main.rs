@@ -31,6 +31,10 @@ struct AgentConfig {
 
     /// Number of requests to send (for single mode)
     request_count: usize,
+
+    /// Async mode: if true, return immediately (don't wait for verification)
+    /// Useful for simulating LLM workloads where verification happens in background
+    async_mode: bool,
 }
 
 impl Default for AgentConfig {
@@ -42,6 +46,7 @@ impl Default for AgentConfig {
             submission_interval_secs: 5,
             mode: "continuous".to_string(),
             request_count: 10,
+            async_mode: false,  // Default: synchronous mode
         }
     }
 }
@@ -103,6 +108,8 @@ async fn main() -> Result<()> {
     info!("Connected to coordinator");
 
     // Run based on mode
+    info!("Verification mode: {}", if config.async_mode { "async" } else { "sync" });
+
     match config.mode.as_str() {
         "single" => {
             info!("Running in single mode ({} requests)", config.request_count);
@@ -112,6 +119,7 @@ async fn main() -> Result<()> {
                 &mut metrics_gen,
                 config.request_count,
                 Duration::from_secs(config.submission_interval_secs),
+                config.async_mode,
             )
             .await?;
         }
@@ -122,6 +130,7 @@ async fn main() -> Result<()> {
                 &tpm_agent,
                 &mut metrics_gen,
                 Duration::from_secs(config.submission_interval_secs),
+                config.async_mode,
             )
             .await?;
         }
@@ -140,6 +149,7 @@ async fn run_single_mode(
     metrics_gen: &mut MetricsGenerator,
     count: usize,
     interval: Duration,
+    async_mode: bool,
 ) -> Result<()> {
     for i in 0..count {
         let request_id = format!("req-{}-{}", client.agent_id(), i);
@@ -159,21 +169,38 @@ async fn run_single_mode(
         let quote = tpm_agent.generate_quote(&metrics);
 
         // Submit to coordinator
-        match client.submit_metrics(request_id.clone(), metrics, quote).await {
-            Ok((verification_id, accepted)) => {
-                info!(
-                    request_id = %request_id,
-                    verification_id = %verification_id,
-                    accepted,
-                    "Submission result"
-                );
-
-                if !accepted {
-                    error!("Metrics submission was rejected!");
+        if async_mode {
+            // Async mode: return immediately
+            match client.submit_metrics_async(request_id.clone(), metrics, quote).await {
+                Ok(verification_id) => {
+                    info!(
+                        request_id = %request_id,
+                        verification_id = %verification_id,
+                        "Submitted (async - verification in background)"
+                    );
+                }
+                Err(e) => {
+                    error!(request_id = %request_id, error = %e, "Submission failed");
                 }
             }
-            Err(e) => {
-                error!(request_id = %request_id, error = %e, "Submission failed");
+        } else {
+            // Sync mode: wait for verification result
+            match client.submit_metrics(request_id.clone(), metrics, quote).await {
+                Ok((verification_id, accepted)) => {
+                    info!(
+                        request_id = %request_id,
+                        verification_id = %verification_id,
+                        accepted,
+                        "Submission result (sync)"
+                    );
+
+                    if !accepted {
+                        error!("Metrics submission was rejected!");
+                    }
+                }
+                Err(e) => {
+                    error!(request_id = %request_id, error = %e, "Submission failed");
+                }
             }
         }
 
@@ -193,6 +220,7 @@ async fn run_continuous_mode(
     tpm_agent: &SimulatedTpmAgent,
     metrics_gen: &mut MetricsGenerator,
     interval: Duration,
+    async_mode: bool,
 ) -> Result<()> {
     let mut counter = 0;
 
@@ -213,21 +241,38 @@ async fn run_continuous_mode(
         let quote = tpm_agent.generate_quote(&metrics);
 
         // Submit to coordinator
-        match client.submit_metrics(request_id.clone(), metrics, quote).await {
-            Ok((verification_id, accepted)) => {
-                info!(
-                    request_id = %request_id,
-                    verification_id = %verification_id,
-                    accepted,
-                    "Submitted"
-                );
-
-                if !accepted {
-                    error!("Submission rejected!");
+        if async_mode {
+            // Async mode: return immediately
+            match client.submit_metrics_async(request_id.clone(), metrics, quote).await {
+                Ok(verification_id) => {
+                    info!(
+                        request_id = %request_id,
+                        verification_id = %verification_id,
+                        "Submitted (async - verification in background)"
+                    );
+                }
+                Err(e) => {
+                    error!(error = %e, "Submission failed");
                 }
             }
-            Err(e) => {
-                error!(error = %e, "Submission failed");
+        } else {
+            // Sync mode: wait for verification result
+            match client.submit_metrics(request_id.clone(), metrics, quote).await {
+                Ok((verification_id, accepted)) => {
+                    info!(
+                        request_id = %request_id,
+                        verification_id = %verification_id,
+                        accepted,
+                        "Submitted (sync)"
+                    );
+
+                    if !accepted {
+                        error!("Submission rejected!");
+                    }
+                }
+                Err(e) => {
+                    error!(error = %e, "Submission failed");
+                }
             }
         }
 
@@ -273,6 +318,10 @@ fn load_config() -> Result<AgentConfig> {
 
     if let Ok(count) = std::env::var("REQUEST_COUNT") {
         config.request_count = count.parse()?;
+    }
+
+    if let Ok(async_mode) = std::env::var("ASYNC_MODE") {
+        config.async_mode = async_mode.parse().unwrap_or(false);
     }
 
     Ok(config)

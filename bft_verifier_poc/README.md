@@ -267,7 +267,7 @@ Coordinator can verify vote authenticity.
 
 ### Performance Optimizations
 
-The system implements two key optimizations to minimize latency:
+The system implements three key optimizations to minimize latency and maximize user experience:
 
 #### 1. Early Termination
 
@@ -303,30 +303,91 @@ With:    Validation only (connections pre-established)
 
 **Logs**: Check for "Pre-warming next epoch's committee" in coordinator logs.
 
+#### 3. Async Verification Pattern
+
+**How it works**:
+- Agent submits metrics and returns immediately (async mode)
+- Verification happens in background on coordinator
+- User receives LLM response without waiting for verification
+- Later query verification result using verification_id
+
+**Use cases**:
+- Real-time LLM chat applications
+- Streaming responses
+- Any scenario where user experience > immediate verification
+
+**Performance benefit**:
+```
+Sync mode (wait for verification):
+  LLM Response → Wait for verification (55ms) → Return to user
+  User latency: LLM time + 55ms
+
+Async mode (verification in background):
+  LLM Response → Return to user immediately
+  Verification happens in background (no user impact)
+  User latency: LLM time + 0ms ← No verification delay! ✅
+```
+
+**Example usage** (Agent):
+```rust
+// Async mode: return immediately
+let verification_id = client.submit_metrics_async(request_id, metrics, quote).await?;
+// Continue with user response...
+
+// Later, query result:
+let result = client.query_result(verification_id).await?;
+```
+
+**Environment variable**:
+```bash
+# Enable async mode
+ASYNC_MODE=true REQUEST_COUNT=5 ./agent
+
+# Check logs
+[INFO] Verification mode: async
+[INFO] Submitted (async - verification in background)
+```
+
+**Combined with sync mode**:
+```bash
+# Default: sync mode (wait for verification)
+REQUEST_COUNT=5 ./agent
+
+[INFO] Verification mode: sync
+[INFO] Submission result (sync) accepted=true
+```
+
 #### Combined Impact
 
 ```
-Component               Baseline  Optimized  Improvement
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-gRPC Connection         20ms      0ms        ← Pre-warmed
-Vote Collection         100ms     50ms       ← Early exit
-Consensus Decision      5ms       5ms        (unchanged)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Latency          125ms     55ms       ← 56% faster!
+Component               Baseline  Optimized  Async Mode
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+gRPC Connection         20ms      0ms        0ms        ← Pre-warmed
+Vote Collection         100ms     50ms       (background)
+Consensus Decision      5ms       5ms        (background)
+User Wait Time          125ms     55ms       0ms        ← Best for UX!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total Impact            Baseline  56% faster  100% faster (no wait)
 ```
 
-**Example scenario** (3 verifiers, quorum = 3):
+**Example scenario** (LLM with async verification):
 ```
-Epoch N-1:
-  - Coordinator pre-warms connections to epoch N committee
-  - Background task completes during epoch N-1
+User request arrives:
+  0ms     → LLM starts inference
+  2000ms  → LLM completes, metrics collected
+  2000ms  → Metrics submitted (async_mode=true)
+  2001ms  → Agent receives ACK (PENDING)
+  2001ms  ✅ RETURN TO USER (don't wait for verification!)
 
-Epoch N verification:
-  0ms     → Vote requests sent to V1, V2, V3 (connections ready!)
-  45ms    ← V1 responds: PASS
-  50ms    ← V2 responds: PASS
-  55ms    ← V3 responds: PASS ← Early consensus, exit!
-          ✅ Total: 55ms (vs 125ms baseline)
+Background (parallel to user response):
+  2001ms  → Coordinator starts consensus
+  2046ms  ← V1 responds: PASS
+  2051ms  ← V2 responds: PASS
+  2056ms  ← V3 responds: PASS → Early consensus!
+  2056ms  → Result stored in cache
+
+Later (optional):
+  → Query verification_id → ACCEPTED
 ```
 
 For more optimization strategies, see [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md).

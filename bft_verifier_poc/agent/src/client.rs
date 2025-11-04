@@ -26,14 +26,44 @@ impl CoordinatorClient {
         Ok(Self { client, agent_id })
     }
 
-    /// Submit metrics with TPM quote
+    /// Submit metrics with TPM quote (synchronous mode)
     ///
-    /// Returns verification_id if accepted
+    /// Waits for verification to complete before returning.
+    /// Returns (verification_id, accepted).
     pub async fn submit_metrics(
         &mut self,
         request_id: String,
         metrics: RequestMetrics,
         quote: TpmQuote,
+    ) -> Result<(String, bool)> {
+        self.submit_metrics_with_mode(request_id, metrics, quote, false)
+            .await
+    }
+
+    /// Submit metrics with TPM quote (asynchronous mode)
+    ///
+    /// Returns immediately with verification_id.
+    /// Verification happens in background.
+    /// Use query_result() to check status later.
+    pub async fn submit_metrics_async(
+        &mut self,
+        request_id: String,
+        metrics: RequestMetrics,
+        quote: TpmQuote,
+    ) -> Result<String> {
+        let (verification_id, _) = self
+            .submit_metrics_with_mode(request_id, metrics, quote, true)
+            .await?;
+        Ok(verification_id)
+    }
+
+    /// Internal method to submit with configurable async mode
+    async fn submit_metrics_with_mode(
+        &mut self,
+        request_id: String,
+        metrics: RequestMetrics,
+        quote: TpmQuote,
+        async_mode: bool,
     ) -> Result<(String, bool)> {
         // Convert to proto types
         let proto_metrics = bft_verifier::RequestMetrics {
@@ -55,20 +85,31 @@ impl CoordinatorClient {
             timestamp: current_timestamp(),
             metrics: Some(proto_metrics),
             quote: Some(proto_quote),
+            async_mode,
         };
 
         info!(
             agent_id = %self.agent_id,
             request_id = %request_id,
+            async_mode = async_mode,
             "Submitting metrics"
         );
 
         let response = self.client.submit_metrics(submission).await?;
         let ack = response.into_inner();
 
+        let status_str = match ack.status {
+            0 => "PENDING",
+            1 => "ACCEPTED",
+            2 => "REJECTED",
+            _ => "UNKNOWN",
+        };
+
         info!(
             verification_id = %ack.verification_id,
             accepted = ack.accepted,
+            status = status_str,
+            message = %ack.message,
             "Received acknowledgment"
         );
 

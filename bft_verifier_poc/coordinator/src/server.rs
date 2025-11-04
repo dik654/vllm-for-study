@@ -16,6 +16,179 @@ pub mod bft_verifier {
 use bft_verifier::coordinator_server::Coordinator;
 use bft_verifier::{ConsensusOutcome as ProtoConsensusOutcome, MetricSubmission, SubmissionAck, VerificationQuery};
 
+/// Handle for background verification tasks
+///
+/// This is a lightweight clone of CoordinatorService that can be moved
+/// into background tasks for async verification.
+#[derive(Clone)]
+struct CoordinatorServiceHandle {
+    vrf_selector: Arc<RwLock<VrfSelector>>,
+    consensus_manager: Arc<ConsensusManager>,
+    epoch_manager: Arc<EpochManager>,
+    verifier_pool: Arc<RwLock<Vec<String>>>,
+    connection_pool: Arc<VerifierConnectionPool>,
+    results_cache: Arc<RwLock<HashMap<String, ConsensusOutcome>>>,
+    speculative_execution: bool,
+}
+
+impl CoordinatorServiceHandle {
+    /// Verify metrics in background (async mode)
+    ///
+    /// This performs the full verification process asynchronously
+    /// without blocking the caller.
+    async fn verify_in_background(
+        &self,
+        verification_id: String,
+        submission: bft_verifier::MetricSubmission,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Get current epoch
+        let current_epoch = self.epoch_manager.current_epoch();
+
+        // Select committee
+        let pool = self.verifier_pool.read().await;
+        let selector = self.vrf_selector.read().await;
+        let committee = selector.select_committee(current_epoch, &pool);
+        drop(pool);
+        drop(selector);
+
+        if committee.is_empty() {
+            return Err("No verifiers available in pool".into());
+        }
+
+        debug!(
+            verification_id = %verification_id,
+            committee_size = committee.len(),
+            "Background verification: committee selected"
+        );
+
+        // Create verification request
+        let verification_request = bft_verifier::VerificationRequest {
+            verification_id: verification_id.clone(),
+            epoch: current_epoch,
+            submission: Some(submission),
+        };
+
+        // Collect votes (reuse existing logic)
+        let (vote_tx, mut vote_rx) = tokio::sync::mpsc::channel(committee.len());
+
+        for verifier_id in &committee {
+            let verifier_id = verifier_id.clone();
+            let req = verification_request.clone();
+            let timeout_duration = self.consensus_manager.vote_timeout();
+            let tx = vote_tx.clone();
+            let connection_pool = Arc::clone(&self.connection_pool);
+
+            tokio::spawn(async move {
+                match tokio::time::timeout(
+                    timeout_duration,
+                    CoordinatorService::request_vote_with_pool(connection_pool, verifier_id.clone(), req),
+                )
+                .await
+                {
+                    Ok(Ok(vote)) => {
+                        let _ = tx.send(Some((verifier_id, vote))).await;
+                    }
+                    Ok(Err(e)) => {
+                        warn!("Background: Failed to get vote: {}", e);
+                        let _ = tx.send(None).await;
+                    }
+                    Err(_) => {
+                        warn!("Background: Timeout getting vote");
+                        let _ = tx.send(None).await;
+                    }
+                }
+            });
+        }
+
+        drop(vote_tx);
+
+        // Collect votes with early termination
+        let mut votes = HashMap::new();
+        let mut votes_received = 0;
+        let total_verifiers = committee.len();
+        let global_timeout = tokio::time::sleep(self.consensus_manager.vote_timeout());
+        tokio::pin!(global_timeout);
+
+        let early_terminated = loop {
+            tokio::select! {
+                Some(vote_result) = vote_rx.recv() => {
+                    votes_received += 1;
+
+                    if let Some((verifier_id, proto_vote)) = vote_result {
+                        let vote = VerifierVote::new(
+                            proto_vote.verifier_id,
+                            proto_vote.verification_id,
+                            if proto_vote.result == 0 {
+                                VerificationResult::Pass
+                            } else {
+                                VerificationResult::Fail
+                            },
+                            proto_vote.reason,
+                            proto_vote.timestamp,
+                            proto_vote.signature,
+                        );
+                        votes.insert(verifier_id, vote);
+
+                        // Check for early consensus
+                        if let Some(_early_result) = self.consensus_manager.has_early_consensus(&votes) {
+                            debug!(
+                                verification_id = %verification_id,
+                                "Background: Early consensus reached"
+                            );
+                            break true;
+                        }
+                    }
+
+                    if votes_received >= total_verifiers {
+                        break false;
+                    }
+                }
+                _ = &mut global_timeout => {
+                    warn!(
+                        verification_id = %verification_id,
+                        "Background: Vote collection timeout"
+                    );
+                    break false;
+                }
+                else => {
+                    break false;
+                }
+            }
+        };
+
+        // Reach consensus
+        let (result, reason) = self.consensus_manager.reach_consensus(&votes);
+        let quorum_reached = result.is_some();
+
+        // Store outcome
+        let outcome = ConsensusOutcome::new(
+            verification_id.clone(),
+            current_epoch,
+            committee,
+            votes,
+            result,
+            quorum_reached,
+            current_timestamp(),
+        );
+
+        self.results_cache
+            .write()
+            .await
+            .insert(verification_id.clone(), outcome);
+
+        info!(
+            verification_id = %verification_id,
+            quorum_reached,
+            early_terminated,
+            result = ?result,
+            "Background verification complete: {}",
+            reason
+        );
+
+        Ok(())
+    }
+}
+
 /// Coordinator service implementation
 pub struct CoordinatorService {
     /// VRF selector for committee selection
@@ -124,15 +297,85 @@ impl Coordinator for CoordinatorService {
         let submission = request.into_inner();
         let agent_id = submission.agent_id.clone();
         let request_id = submission.request_id.clone();
+        let async_mode = submission.async_mode;
 
         info!(
             agent_id = %agent_id,
             request_id = %request_id,
+            async_mode = async_mode,
             "Received metric submission"
         );
 
         // Generate verification ID
         let verification_id = uuid::Uuid::new_v4().to_string();
+
+        // Async mode: return immediately and verify in background
+        if async_mode {
+            info!(
+                verification_id = %verification_id,
+                "Async mode: returning immediately, verification in background"
+            );
+
+            // Clone necessary data for background task
+            let verification_id_bg = verification_id.clone();
+            let submission_bg = bft_verifier::MetricSubmission {
+                agent_id: submission.agent_id,
+                request_id: submission.request_id,
+                timestamp: submission.timestamp,
+                metrics: submission.metrics,
+                quote: submission.quote,
+                async_mode: false, // Process synchronously in background
+            };
+
+            // Spawn background verification task
+            let coordinator_service = CoordinatorServiceHandle {
+                vrf_selector: Arc::clone(&self.vrf_selector),
+                consensus_manager: Arc::clone(&self.consensus_manager),
+                epoch_manager: Arc::clone(&self.epoch_manager),
+                verifier_pool: Arc::clone(&self.verifier_pool),
+                connection_pool: Arc::clone(&self.connection_pool),
+                results_cache: Arc::clone(&self.results_cache),
+                speculative_execution: self.speculative_execution,
+            };
+
+            tokio::spawn(async move {
+                match coordinator_service
+                    .verify_in_background(verification_id_bg.clone(), submission_bg)
+                    .await
+                {
+                    Ok(_) => {
+                        info!(
+                            verification_id = %verification_id_bg,
+                            "Background verification completed successfully"
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            verification_id = %verification_id_bg,
+                            error = %e,
+                            "Background verification failed"
+                        );
+                    }
+                }
+            });
+
+            // Return immediately with PENDING status
+            return Ok(Response::new(SubmissionAck {
+                verification_id,
+                accepted: false, // Deprecated field
+                status: 0,       // PENDING
+                message: "Verification in progress (async mode)".to_string(),
+            }));
+        }
+
+        // Sync mode: existing synchronous logic below
+        info!(
+            verification_id = %verification_id,
+            "Sync mode: waiting for verification to complete"
+        );
+
+        // Generate verification ID (already done above)
+        // let verification_id = uuid::Uuid::new_v4().to_string();
 
         // Get current epoch
         let current_epoch = self.epoch_manager.current_epoch();
@@ -317,9 +560,22 @@ impl Coordinator for CoordinatorService {
             reason
         );
 
+        // Return with appropriate status
+        let (status, message) = if quorum_reached {
+            match result {
+                Some(VerificationResult::Pass) => (1, format!("Verification passed: {}", reason)),
+                Some(VerificationResult::Fail) => (2, format!("Verification failed: {}", reason)),
+                None => (2, "No consensus reached".to_string()),
+            }
+        } else {
+            (2, format!("Quorum not reached: {}", reason))
+        };
+
         Ok(Response::new(SubmissionAck {
             verification_id,
-            accepted: quorum_reached,
+            accepted: quorum_reached,  // Deprecated but kept for compatibility
+            status,
+            message,
         }))
     }
 
