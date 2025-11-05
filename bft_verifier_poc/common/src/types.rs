@@ -8,10 +8,24 @@ pub struct RequestMetrics {
     pub completion_tokens: u32,
     pub e2e_latency_ms: u64,
     pub estimated_cost: f64,
+
+    // Security: Blockchain-style metrics chain (Phase 1-A)
+    #[serde(default)]
+    pub sequence: u64,           // Sequence number (0 = chain validation disabled)
+    #[serde(default)]
+    pub prev_hash: Vec<u8>,      // Hash of previous metrics
+    #[serde(default)]
+    pub current_hash: Vec<u8>,   // Hash of current metrics
+
+    // Additional metrics
+    #[serde(default)]
+    pub cached_tokens: u32,      // Cached tokens count
+    #[serde(default)]
+    pub time_to_first_token_ms: u64,  // TTFT
 }
 
 impl RequestMetrics {
-    /// Create new RequestMetrics with validation
+    /// Create new RequestMetrics with validation (basic fields only)
     pub fn new(
         prompt_tokens: u32,
         completion_tokens: u32,
@@ -23,6 +37,11 @@ impl RequestMetrics {
             completion_tokens,
             e2e_latency_ms,
             estimated_cost,
+            sequence: 0,
+            prev_hash: Vec::new(),
+            current_hash: Vec::new(),
+            cached_tokens: 0,
+            time_to_first_token_ms: 0,
         }
     }
 

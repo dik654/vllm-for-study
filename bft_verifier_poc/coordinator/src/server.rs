@@ -1,6 +1,8 @@
+use crate::agent_tracker::{AgentTracker, AgentTrackerConfig};
 use crate::connection_pool::VerifierConnectionPool;
 use crate::consensus::ConsensusManager;
 use crate::epoch::EpochManager;
+use crate::nonce_manager::NonceManager;
 use crate::vrf::VrfSelector;
 use bft_common::{current_timestamp, ConsensusOutcome, VerificationResult, VerifierVote};
 use std::collections::HashMap;
@@ -29,6 +31,8 @@ struct CoordinatorServiceHandle {
     connection_pool: Arc<VerifierConnectionPool>,
     results_cache: Arc<RwLock<HashMap<String, ConsensusOutcome>>>,
     speculative_execution: bool,
+    nonce_manager: Arc<NonceManager>,
+    agent_tracker: Arc<AgentTracker>,
 }
 
 impl CoordinatorServiceHandle {
@@ -211,6 +215,12 @@ pub struct CoordinatorService {
 
     /// Enable speculative execution (pre-warm next epoch's committee)
     speculative_execution: bool,
+
+    /// Nonce manager for replay attack prevention
+    nonce_manager: Arc<NonceManager>,
+
+    /// Agent tracker for rate limiting and anomaly detection
+    agent_tracker: Arc<AgentTracker>,
 }
 
 impl CoordinatorService {
@@ -243,6 +253,10 @@ impl CoordinatorService {
         let max_connections = verifier_pool.len().max(10);
         let connection_pool = VerifierConnectionPool::new(verifier_endpoints, max_connections);
 
+        // Initialize security modules
+        let nonce_manager = NonceManager::new();
+        let agent_tracker = AgentTracker::new(AgentTrackerConfig::default());
+
         Self {
             vrf_selector: Arc::new(RwLock::new(vrf_selector)),
             consensus_manager: Arc::new(consensus_manager),
@@ -251,6 +265,8 @@ impl CoordinatorService {
             connection_pool: Arc::new(connection_pool),
             results_cache: Arc::new(RwLock::new(HashMap::new())),
             speculative_execution,
+            nonce_manager: Arc::new(nonce_manager),
+            agent_tracker: Arc::new(agent_tracker),
         }
     }
 
@@ -306,6 +322,47 @@ impl Coordinator for CoordinatorService {
             "Received metric submission"
         );
 
+        // Security validation: Nonce (if provided)
+        if !submission.coordinator_nonce.is_empty() {
+            if let Err(e) = self.nonce_manager.validate_and_consume(&submission.coordinator_nonce).await {
+                warn!(
+                    agent_id = %agent_id,
+                    error = %e,
+                    "Nonce validation failed"
+                );
+                return Ok(Response::new(SubmissionAck {
+                    verification_id: String::new(),
+                    accepted: false,
+                    status: 2, // FAILED
+                    message: format!("Nonce validation failed: {}", e),
+                }));
+            }
+        }
+
+        // Security validation: Agent tracker (rate limiting & anomaly detection)
+        if let Some(ref metrics) = submission.metrics {
+            let request_metrics = bft_common::RequestMetrics::new(
+                metrics.prompt_tokens,
+                metrics.completion_tokens,
+                metrics.e2e_latency_ms,
+                metrics.estimated_cost,
+            );
+
+            if let Err(e) = self.agent_tracker.validate_submission(&agent_id, &request_metrics).await {
+                warn!(
+                    agent_id = %agent_id,
+                    error = %e,
+                    "Agent tracker validation failed"
+                );
+                return Ok(Response::new(SubmissionAck {
+                    verification_id: String::new(),
+                    accepted: false,
+                    status: 2, // FAILED
+                    message: format!("Rate limit or anomaly detected: {}", e),
+                }));
+            }
+        }
+
         // Generate verification ID
         let verification_id = uuid::Uuid::new_v4().to_string();
 
@@ -336,6 +393,8 @@ impl Coordinator for CoordinatorService {
                 connection_pool: Arc::clone(&self.connection_pool),
                 results_cache: Arc::clone(&self.results_cache),
                 speculative_execution: self.speculative_execution,
+                nonce_manager: Arc::clone(&self.nonce_manager),
+                agent_tracker: Arc::clone(&self.agent_tracker),
             };
 
             tokio::spawn(async move {

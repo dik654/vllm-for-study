@@ -1,3 +1,4 @@
+use crate::chain_validator::{ChainValidator, ChainValidatorConfig};
 use crate::tpm::SimulatedTpmVerifier;
 use crate::validator::{validate_agent_id, validate_metrics, validate_request_id, validate_timestamp};
 use bft_common::{current_timestamp, sign_message, signature_to_bytes, VerificationResult};
@@ -32,6 +33,9 @@ pub struct VerifierService {
 
     /// Statistics
     verified_count: Arc<RwLock<u64>>,
+
+    /// Chain validator for blockchain-style metrics verification
+    chain_validator: Arc<ChainValidator>,
 }
 
 impl VerifierService {
@@ -40,11 +44,15 @@ impl VerifierService {
         tpm_verifier: SimulatedTpmVerifier,
         signing_key: SigningKey,
     ) -> Self {
+        // Initialize chain validator with default config
+        let chain_validator = ChainValidator::new(ChainValidatorConfig::default());
+
         Self {
             verifier_id,
             tpm_verifier: Arc::new(RwLock::new(tpm_verifier)),
             signing_key,
             verified_count: Arc::new(RwLock::new(0)),
+            chain_validator: Arc::new(chain_validator),
         }
     }
 
@@ -114,12 +122,18 @@ impl Verifier for VerifierService {
             .metrics
             .ok_or_else(|| Status::invalid_argument("Missing metrics"))?;
 
-        let metrics = bft_common::RequestMetrics::new(
-            proto_metrics.prompt_tokens,
-            proto_metrics.completion_tokens,
-            proto_metrics.e2e_latency_ms,
-            proto_metrics.estimated_cost,
-        );
+        // Build metrics with all fields (including chain fields)
+        let metrics = bft_common::RequestMetrics {
+            prompt_tokens: proto_metrics.prompt_tokens,
+            completion_tokens: proto_metrics.completion_tokens,
+            e2e_latency_ms: proto_metrics.e2e_latency_ms,
+            estimated_cost: proto_metrics.estimated_cost,
+            sequence: proto_metrics.sequence,
+            prev_hash: proto_metrics.prev_hash.clone(),
+            current_hash: proto_metrics.current_hash.clone(),
+            cached_tokens: proto_metrics.cached_tokens,
+            time_to_first_token_ms: proto_metrics.time_to_first_token_ms,
+        };
 
         if let Err(e) = validate_metrics(&metrics) {
             warn!("Invalid metrics: {}", e);
@@ -128,6 +142,24 @@ impl Verifier for VerifierService {
                 VerificationResult::Fail,
                 format!("Invalid metrics: {}", e),
             );
+        }
+
+        // Security validation: Chain validation (if sequence > 0)
+        if metrics.sequence > 0 {
+            if let Err(e) = self.chain_validator.validate_chain(&agent_id, &metrics).await {
+                warn!(
+                    verifier_id = %self.verifier_id,
+                    agent_id = %agent_id,
+                    sequence = metrics.sequence,
+                    error = %e,
+                    "Chain validation failed"
+                );
+                return self.create_vote_response(
+                    verification_id,
+                    VerificationResult::Fail,
+                    format!("Chain validation failed: {}", e),
+                );
+            }
         }
 
         // Step 4: Extract TPM quote
