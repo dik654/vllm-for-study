@@ -44,16 +44,25 @@ pub fn validate_metrics(metrics: &RequestMetrics) -> Result<(), ValidationError>
 }
 
 /// Validate timestamp is not too far in the future or past
+///
+/// Security hardening:
+/// - Past tolerance: 60 seconds (was 1 hour)
+/// - Future tolerance: 10 seconds (was 5 minutes)
+///
+/// This prevents replay attacks with old metrics
 pub fn validate_timestamp(timestamp: u64) -> Result<(), ValidationError> {
+    const TIMESTAMP_TOLERANCE_PAST: u64 = 60;    // 60 seconds in the past
+    const TIMESTAMP_TOLERANCE_FUTURE: u64 = 10;  // 10 seconds in the future
+
     let now = current_timestamp();
 
-    // Reject timestamps more than 5 minutes in the future
-    if timestamp > now + 300 {
+    // Reject timestamps too far in the future
+    if timestamp > now + TIMESTAMP_TOLERANCE_FUTURE {
         return Err(ValidationError::InvalidTimestamp(timestamp));
     }
 
-    // Reject timestamps more than 1 hour in the past
-    if timestamp < now.saturating_sub(3600) {
+    // Reject timestamps too far in the past
+    if timestamp < now.saturating_sub(TIMESTAMP_TOLERANCE_PAST) {
         return Err(ValidationError::InvalidTimestamp(timestamp));
     }
 

@@ -21,6 +21,13 @@ message RequestMetrics {
   uint32 completion_tokens = 2;
   uint64 e2e_latency_ms = 3;
   double estimated_cost = 4;
+
+  // Security: Metrics chain (blockchain-style)
+  uint64 sequence = 5;           // Sequence number (1, 2, 3, ...)
+  bytes prev_hash = 6;           // Hash of previous metrics
+  bytes current_hash = 7;        // Hash of current metrics
+  uint32 cached_tokens = 8;      // Cached tokens count
+  uint64 time_to_first_token_ms = 9;  // TTFT
 }
 
 message TpmQuote {
@@ -36,6 +43,7 @@ message MetricSubmission {
   RequestMetrics metrics = 4;
   TpmQuote quote = 5;
   bool async_mode = 6;  // If true, return immediately and verify in background
+  string coordinator_nonce = 7;  // Security: Replay attack prevention
 }
 
 // Verification protocol
