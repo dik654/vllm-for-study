@@ -1,10 +1,12 @@
 use anyhow::Result;
 use bft_agent::client::CoordinatorClient;
+use bft_agent::file_monitor::{FileMonitor, FileMonitorConfig};
 use bft_agent::metrics::MetricsGenerator;
 use bft_agent::tpm::SimulatedTpmAgent;
 use bft_common::{generate_keypair, signing_key_from_bytes, verifying_key_to_bytes};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{error, info};
@@ -26,7 +28,7 @@ struct AgentConfig {
     /// How often to generate and submit metrics
     submission_interval_secs: u64,
 
-    /// Mode: "single" or "continuous"
+    /// Mode: "single", "continuous", or "file_monitor"
     mode: String,
 
     /// Number of requests to send (for single mode)
@@ -35,6 +37,16 @@ struct AgentConfig {
     /// Async mode: if true, return immediately (don't wait for verification)
     /// Useful for simulating LLM workloads where verification happens in background
     async_mode: bool,
+
+    /// File monitor base directory (for file_monitor mode)
+    /// Default: /var/log/vllm/metrics
+    file_monitor_dir: String,
+
+    /// File monitor poll interval in seconds (for file_monitor mode)
+    file_monitor_poll_secs: u64,
+
+    /// File monitor batch size (for file_monitor mode)
+    file_monitor_batch_size: usize,
 }
 
 impl Default for AgentConfig {
@@ -47,6 +59,9 @@ impl Default for AgentConfig {
             mode: "continuous".to_string(),
             request_count: 10,
             async_mode: false,  // Default: synchronous mode
+            file_monitor_dir: "/var/log/vllm/metrics".to_string(),
+            file_monitor_poll_secs: 1,
+            file_monitor_batch_size: 10,
         }
     }
 }
@@ -134,8 +149,24 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
+        "file_monitor" => {
+            info!("Running in file_monitor mode");
+            info!("  Directory: {}", config.file_monitor_dir);
+            info!("  Poll interval: {}s", config.file_monitor_poll_secs);
+            info!("  Batch size: {}", config.file_monitor_batch_size);
+
+            let monitor_config = FileMonitorConfig {
+                base_dir: PathBuf::from(config.file_monitor_dir),
+                poll_interval_secs: config.file_monitor_poll_secs,
+                batch_size: config.file_monitor_batch_size,
+                async_mode: config.async_mode,
+            };
+
+            let file_monitor = FileMonitor::new(monitor_config)?;
+            file_monitor.run(&mut client, &tpm_agent).await?;
+        }
         _ => {
-            return Err(anyhow::anyhow!("Invalid mode: {}", config.mode));
+            return Err(anyhow::anyhow!("Invalid mode: {}. Valid modes: single, continuous, file_monitor", config.mode));
         }
     }
 
@@ -322,6 +353,18 @@ fn load_config() -> Result<AgentConfig> {
 
     if let Ok(async_mode) = std::env::var("ASYNC_MODE") {
         config.async_mode = async_mode.parse().unwrap_or(false);
+    }
+
+    if let Ok(dir) = std::env::var("FILE_MONITOR_DIR") {
+        config.file_monitor_dir = dir;
+    }
+
+    if let Ok(poll_secs) = std::env::var("FILE_MONITOR_POLL_SECS") {
+        config.file_monitor_poll_secs = poll_secs.parse().unwrap_or(1);
+    }
+
+    if let Ok(batch_size) = std::env::var("FILE_MONITOR_BATCH_SIZE") {
+        config.file_monitor_batch_size = batch_size.parse().unwrap_or(10);
     }
 
     Ok(config)

@@ -35,6 +35,7 @@ from vllm.llm_metrics_collector.storage.memory_storage import (
     MemoryStorageBackend,
 )
 from vllm.llm_metrics_collector.storage.file_storage import FileStorageBackend
+from vllm.llm_metrics_collector.storage.pending_queue import PendingQueueStorage
 from vllm.llm_metrics_collector.pricing.base import PricingCalculator
 from vllm.llm_metrics_collector.pricing.token_based import TokenBasedPricing
 
@@ -55,6 +56,7 @@ __all__ = [
     "StorageBackend",
     "MemoryStorageBackend",
     "FileStorageBackend",
+    "PendingQueueStorage",
     # Pricing
     "PricingCalculator",
     "TokenBasedPricing",
