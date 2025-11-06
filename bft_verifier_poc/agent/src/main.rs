@@ -47,6 +47,65 @@ struct AgentConfig {
 
     /// File monitor batch size (for file_monitor mode)
     file_monitor_batch_size: usize,
+
+    /// TPM configuration
+    #[serde(default)]
+    tpm: TpmConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TpmConfig {
+    /// TPM mode: "simulated", "hardware", or "simulator"
+    /// - simulated: Ed25519 software simulation (default, no TPM required)
+    /// - hardware: Real TPM 2.0 hardware (requires --features tpm-hardware)
+    /// - simulator: TPM simulator (requires tpm2-abrmd and swtpm)
+    #[serde(default = "default_tpm_mode")]
+    mode: String,
+
+    /// TPM device path (for hardware mode)
+    /// Default: /dev/tpmrm0 (resource manager)
+    /// Alternative: /dev/tpm0 (direct access)
+    #[serde(default = "default_tpm_device")]
+    device_path: String,
+
+    /// PCR index to use for metrics extending
+    /// Default: 16 (available for application use)
+    /// Valid range: 16-23 (reserved for dynamic measurements)
+    #[serde(default = "default_pcr_index")]
+    pcr_index: u32,
+
+    /// TPM key handle (persistent key)
+    /// Format: 0x81010001 (hex)
+    /// Must be pre-created with tpm2_tools
+    #[serde(default = "default_key_handle")]
+    key_handle: String,
+}
+
+fn default_tpm_mode() -> String {
+    "simulated".to_string()
+}
+
+fn default_tpm_device() -> String {
+    "/dev/tpmrm0".to_string()
+}
+
+fn default_pcr_index() -> u32 {
+    16
+}
+
+fn default_key_handle() -> String {
+    "0x81010001".to_string()
+}
+
+impl Default for TpmConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_tpm_mode(),
+            device_path: default_tpm_device(),
+            pcr_index: default_pcr_index(),
+            key_handle: default_key_handle(),
+        }
+    }
 }
 
 impl Default for AgentConfig {
@@ -62,6 +121,7 @@ impl Default for AgentConfig {
             file_monitor_dir: "/var/log/vllm/metrics".to_string(),
             file_monitor_poll_secs: 1,
             file_monitor_batch_size: 10,
+            tpm: TpmConfig::default(),
         }
     }
 }
@@ -105,7 +165,40 @@ async fn main() -> Result<()> {
         signing_key_from_bytes(&key_array)
     };
 
-    // Create TPM agent
+    // Create TPM agent based on configuration
+    info!("TPM mode: {}", config.tpm.mode);
+
+    #[cfg(feature = "tpm-hardware")]
+    let use_real_tpm = config.tpm.mode == "hardware";
+
+    #[cfg(not(feature = "tpm-hardware"))]
+    let use_real_tpm = false;
+
+    if use_real_tpm {
+        #[cfg(feature = "tpm-hardware")]
+        {
+            info!("Initializing real TPM agent...");
+            info!("  Device: {}", config.tpm.device_path);
+            info!("  PCR index: {}", config.tpm.pcr_index);
+            info!("  Key handle: {}", config.tpm.key_handle);
+
+            return Err(anyhow::anyhow!(
+                "Real TPM agent initialization not yet implemented in main.rs. \
+                Please check PHASE2_TPM_INTEGRATION.md for full implementation."
+            ));
+        }
+        #[cfg(not(feature = "tpm-hardware"))]
+        {
+            return Err(anyhow::anyhow!(
+                "TPM hardware mode requested but binary not compiled with --features tpm-hardware. \
+                Please rebuild with: cargo build --release --features tpm-hardware"
+            ));
+        }
+    } else {
+        // Use simulated TPM (Ed25519)
+        info!("Initializing simulated TPM agent (Ed25519)...");
+    }
+
     let tpm_agent = SimulatedTpmAgent::new(signing_key);
     info!("TPM agent initialized");
 

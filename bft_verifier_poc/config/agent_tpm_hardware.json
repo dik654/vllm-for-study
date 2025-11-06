@@ -1,0 +1,18 @@
+{
+  "agent_id": "agent-vllm-tpm-001",
+  "coordinator_endpoint": "http://coordinator.example.com:50051",
+  "signing_key_hex": "",
+  "submission_interval_secs": 5,
+  "mode": "file_monitor",
+  "request_count": 10,
+  "async_mode": true,
+  "file_monitor_dir": "/tmp/vllm_metrics_queue",
+  "file_monitor_poll_secs": 1,
+  "file_monitor_batch_size": 10,
+  "tpm": {
+    "mode": "hardware",
+    "device_path": "/dev/tpmrm0",
+    "pcr_index": 16,
+    "key_handle": "0x81010001"
+  }
+}
