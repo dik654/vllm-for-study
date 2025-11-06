@@ -33,13 +33,16 @@ vLLM의 내부 동작 메커니즘을 실제 코드 기반으로 상세히 분�
    - Prefix Caching with block hashing
    - 7-10x 메모리 효율 개선 (~1300 lines)
 
-### 🔄 작성 예정 문서
+5. **[05_transformer_llms.md](05_transformer_llms.md)** - Transformer LLMs (Llama 등)
+   - Llama 아키텍처 (Self-attention + Feed-forward)
+   - RoPE (Rotary Position Embedding) 상세 구현
+   - GQA (Grouped Query Attention) - 64 Q heads, 8 KV heads
+   - SwiGLU activation with fused operations
+   - RMSNorm normalization
+   - Tensor Parallelism과 Quantization
+   - 실제 성능 측정 및 최적화 (~1400 lines)
 
-5. **05_transformer_llms.md** - Transformer LLMs (Llama 등)
-   - Llama 아키텍처
-   - RoPE (Rotary Position Embedding)
-   - GQA (Grouped Query Attention)
-   - SwiGLU activation
+### 🔄 작성 예정 문서
 
 6. **06_moe_llms.md** - Mixture-of-Expert LLMs
    - Mixtral 아키텍처
@@ -259,7 +262,8 @@ print(prof.key_averages().table(sort_by="cuda_time_total"))
 - ✅ 02_model_initialization.md (~800 lines)
 - ✅ 03_inference_process.md (~1500 lines)
 - ✅ 04_paged_attention.md (~1300 lines)
-- 🔄 05-08 작성 중
+- ✅ 05_transformer_llms.md (~1400 lines)
+- 🔄 06-08 작성 중
 
 ## 📄 라이선스
 
