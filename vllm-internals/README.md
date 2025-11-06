@@ -10,27 +10,30 @@ vLLM의 내부 동작 메커니즘을 실제 코드 기반으로 상세히 분�
    - 디스크 → CPU 메모리 → GPU 메모리 전체 과정
    - SafeTensors, PyTorch 포맷 비교
    - Multi-thread 로딩, 성능 최적화
-   - 실제 vLLM 코드 기반 상세 분석 (완료)
+   - 실제 vLLM 코드 기반 상세 분석 (~800 lines)
+
+2. **[02_model_initialization.md](02_model_initialization.md)** - 모델 초기화 과정
+   - GPUModelRunner 초기화
+   - 모델 로딩 with DeviceMemoryProfiler
+   - KV Cache 할당 (PagedAttention)
+   - Attention Backend 선택 (FlashAttention, xFormers)
+   - CUDA Graph 최적화 (~800 lines)
+
+3. **[03_inference_process.md](03_inference_process.md)** - 추론 과정 상세 분석
+   - LLMEngine, Scheduler, GPUModelRunner 전체 파이프라인
+   - Continuous batching과 preemption
+   - Forward pass 및 sampling
+   - 성능 최적화 기법 (CUDA graphs, chunked prefill)
+   - 실제 성능 측정 및 트러블슈팅 (~1500 lines)
+
+4. **[04_paged_attention.md](04_paged_attention.md)** - PagedAttention 메커니즘
+   - 전통적 Attention의 문제점 (메모리 낭비, fragmentation)
+   - Block-based memory management
+   - Block Pool과 Free Block Queue
+   - Prefix Caching with block hashing
+   - 7-10x 메모리 효율 개선 (~1300 lines)
 
 ### 🔄 작성 예정 문서
-
-2. **02_model_initialization.md** - 모델 초기화 과정
-   - 모델 아키텍처 구성
-   - Layer 초기화
-   - KV Cache 할당
-   - Quantization 적용
-
-3. **03_inference_process.md** - 추론 과정 상세 분석
-   - 요청 처리 flow
-   - Batch 스케줄링
-   - Forward pass
-   - Token 생성
-
-4. **04_paged_attention.md** - PagedAttention 메커니즘
-   - 기존 Attention의 문제점
-   - PagedAttention 알고리즘
-   - Block 관리
-   - Copy-on-Write
 
 5. **05_transformer_llms.md** - Transformer LLMs (Llama 등)
    - Llama 아키텍처
@@ -251,7 +254,12 @@ print(prof.key_averages().table(sort_by="cuda_time_total"))
 
 **작성 일자**: 2025-11-06
 **vLLM 버전**: Latest (as of 2025-11)
-**Status**: 01_weight_loading.md 완료, 나머지 작성 중
+**Status**:
+- ✅ 01_weight_loading.md (~800 lines)
+- ✅ 02_model_initialization.md (~800 lines)
+- ✅ 03_inference_process.md (~1500 lines)
+- ✅ 04_paged_attention.md (~1300 lines)
+- 🔄 05-08 작성 중
 
 ## 📄 라이선스
 
