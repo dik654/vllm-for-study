@@ -5,9 +5,16 @@
 여러 서버(Provider)가 LLM API, Memory, Storage 리소스를 제공하고, 중앙 Router가 이를 통합하여 사용자에게 서비스를 제공하는 **분산 LLM 인프라 플랫폼**입니다.
 
 ### 핵심 기능
-- **Provider**: vLLM 기반 LLM inference, KV cache, storage 제공
+- **Provider**: vLLM 기반 LLM inference + Context/GP Memory/Storage 제공
 - **Central Router**: 요청 라우팅, metric 수집, 정산 처리
-- **Billing System**: 사용자 결제 및 Provider 수익 정산
+- **Billing System**: OpenRouter 스타일 commission (5%) + 부가 서비스 마진 (20%)
+
+### 서비스 타입
+1. **LLM API** - vLLM inference (5% commission)
+2. **Context Memory** - LLM 컨텍스트용 (KV cache, conversation history)
+3. **Context Storage** - LLM 데이터 영구 저장 (chat history, preferences)
+4. **GP Memory** - 범용 메모리 (application, database buffer)
+5. **GP Storage** - 범용 스토리지 (Hot/Cold tier)
 
 ---
 
@@ -220,32 +227,33 @@ distributed-llm-platform/
 
 ---
 
-## 💰 가격 정책 (예시)
+## 💰 가격 정책 (OpenRouter 스타일)
 
-### Provider 단가
+### Provider 단가 (투명하게 공개)
 ```
 LLM API:
-  - Input token: $0.0001/token
-  - Output token: $0.0002/token
-  - Request base: $0.01/request
+  - Input token: $1.00 per 1M tokens
+  - Cached input: $0.10 per 1M tokens (90% 할인)
+  - Output token: $8.00 per 1M tokens (8배)
+  - Batch processing: 50% 할인
 
-Memory: $0.02/GB/hour
-Storage: $0.001/GB/hour
+Context Memory: $0.03/GB/hour
+Context Storage: $0.012/GB/hour
+GP Memory: $0.009/GB/hour
+GP Storage Hot: $0.001/GB/hour
+GP Storage Cold: $0.0002/GB/hour (80% 할인)
 ```
 
-### 사용자 단가 (Provider 단가 + 50% 마진)
+### 사용자 단가
 ```
-LLM API:
-  - Input token: $0.00015/token
-  - Output token: $0.0003/token
-  - Request base: $0.015/request
-
-Memory: $0.03/GB/hour
-Storage: $0.0015/GB/hour
+LLM API: Provider 단가 + 5% commission
+Memory/Storage: Provider 단가 + 20% margin
 ```
 
 ### 플랫폼 수수료
-- Provider 수익의 20%
+- **LLM API**: 5% commission (OpenRouter와 동일)
+- **Memory/Storage**: 20% margin (차별화)
+- **실패한 요청**: 무료 (fallback 시)
 
 ---
 
