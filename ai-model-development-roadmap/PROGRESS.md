@@ -7,6 +7,59 @@
 
 ---
 
+## Phase -1: 수학적 기초 (2주, 선택) ⏱️ 예상: 80시간
+
+### Week 1: 핵심 수학
+
+#### Day 1-2: 선형대수 기초
+- [ ] 벡터 연산 (내적, 외적)
+- [ ] 행렬 곱셈 밑바닥 구현
+- [ ] Transpose, Inverse 이해
+- [ ] NumPy로 실습
+- **완료일: ____________**
+
+#### Day 3-4: 선형대수 고급
+- [ ] Eigenvalues & Eigenvectors
+- [ ] SVD 구현
+- [ ] PCA 구현
+- [ ] LoRA 수학적 유도
+- **완료일: ____________**
+
+#### Day 5-6: 미적분 & 최적화
+- [ ] Derivatives 손으로 계산
+- [ ] Chain rule 연습
+- [ ] Backpropagation 유도
+- [ ] Gradient descent 구현
+- [ ] Adam optimizer 이해
+- **완료일: ____________**
+
+### Week 2: AI 수학
+
+#### Day 7-8: 확률 & 통계
+- [ ] Gaussian distribution
+- [ ] Bayes' theorem
+- [ ] MLE 개념
+- [ ] Sampling 기법
+- **완료일: ____________**
+
+#### Day 9-10: 정보이론
+- [ ] Entropy 계산
+- [ ] Cross entropy 이해
+- [ ] KL divergence 구현
+- [ ] Loss functions와의 연결
+- **완료일: ____________**
+
+#### Day 11-14: 통합 실습
+- [ ] 2-layer NN 밑바닥 구현
+- [ ] MNIST 훈련
+- [ ] Gradient checking
+- [ ] Overfitting test
+- **완료일: ____________**
+
+**Phase -1 총 시간: ______ 시간**
+
+---
+
 ## Phase 0: HuggingFace 생태계 (1주) ⏱️ 예상: 40시간
 
 ### Day 1-2: 핵심 용어
@@ -167,6 +220,40 @@
 
 ---
 
+## Phase 3.5: Video & Audio Generation (1.5주) ⏱️ 예상: 60시간
+
+### Week 7.5: Video Generation
+
+#### Day 1-3: Video Diffusion
+- [ ] Temporal layers 이해
+- [ ] 3D attention 구현
+- [ ] Stable Video Diffusion 실습
+- [ ] AnimateDiff 실행
+- [ ] Image-to-video 생성
+- **완료일: ____________**
+
+### Week 8: Audio & Music
+
+#### Day 4-6: Audio Generation
+- [ ] Waveform vs Spectrogram 이해
+- [ ] EnCodec tokenization
+- [ ] MusicGen 실습 (텍스트 → 음악)
+- [ ] AudioLDM 실습 (사운드 이펙트)
+- [ ] Stable Audio 실행
+- **완료일: ____________**
+
+#### Day 7-8: Multi-modal
+- [ ] ImageBind 이해
+- [ ] Cross-modal retrieval
+- [ ] Audio → Video 생성
+- [ ] Multi-modal embedding 시각화
+- [ ] ControlNet 실습
+- **완료일: ____________**
+
+**Phase 3.5 총 시간: ______ 시간**
+
+---
+
 ## Phase 4: GAN 마스터리 (3주) ⏱️ 예상: 120시간
 
 ### Week 8: Vanilla GAN
@@ -262,6 +349,102 @@
 
 ---
 
+## Phase 5.5: LLM Alignment & Advanced Architectures (2주) ⏱️ 예상: 80시간
+
+### Week 1: LLM Alignment
+
+#### Day 1-2: Instruction Tuning
+- [ ] SFT (Supervised Fine-Tuning) 이해
+- [ ] Instruction dataset 구축
+- [ ] Alpaca 스타일 훈련
+- [ ] Few-shot prompting
+- **완료일: ____________**
+
+#### Day 3-5: RLHF
+- [ ] Reward Model 훈련
+- [ ] PPO 알고리즘 이해
+- [ ] RLHF 파이프라인 구현
+- [ ] Preference dataset 분석
+- **완료일: ____________**
+
+#### Day 6-7: DPO
+- [ ] DPO vs RLHF 비교
+- [ ] DPO 구현
+- [ ] Preference optimization
+- [ ] 성능 평가
+- **완료일: ____________**
+
+### Week 2: Advanced Architectures
+
+#### Day 8-10: Mixture of Experts
+- [ ] MoE 아키텍처 이해
+- [ ] Router 구현
+- [ ] Expert parallelism
+- [ ] DeepSeek-V3, Mixtral 분석
+- **완료일: ____________**
+
+#### Day 11-12: Constitutional AI
+- [ ] Self-critique 메커니즘
+- [ ] Constitutional prompts
+- [ ] Claude 접근 방식 이해
+- **완료일: ____________**
+
+#### Day 13-14: 통합 프로젝트
+- [ ] Mini ChatGPT 구현
+- [ ] SFT → RLHF/DPO 파이프라인
+- [ ] 성능 벤치마크
+- **완료일: ____________**
+
+**Phase 5.5 총 시간: ______ 시간**
+
+---
+
+## Phase 5.7: Hardware & Systems (1.5주) ⏱️ 예상: 60시간
+
+### Week 1: GPU Programming
+
+#### Day 1-2: GPU Architecture
+- [ ] GPU vs CPU 구조 이해
+- [ ] CUDA Core vs Tensor Core
+- [ ] Memory hierarchy 분석
+- [ ] Compute/Memory bound 구분
+- **완료일: ____________**
+
+#### Day 3-5: CUDA Programming
+- [ ] 첫 CUDA kernel 작성
+- [ ] Memory coalescing
+- [ ] Shared memory 활용
+- [ ] Matrix multiplication 최적화
+- [ ] Kernel fusion 이해
+- **완료일: ____________**
+
+#### Day 6-7: Advanced Optimization
+- [ ] CUDA profiling (Nsight)
+- [ ] Attention kernel 최적화
+- [ ] FlashAttention 분석
+- [ ] 2-3배 속도 향상 달성
+- **완료일: ____________**
+
+### Week 2: AI Accelerators
+
+#### Day 8-9: NPU/TPU
+- [ ] Google TPU 아키텍처
+- [ ] Systolic array 이해
+- [ ] Apple Neural Engine
+- [ ] NPU 설계 철학
+- **완료일: ____________**
+
+#### Day 10-11: Triton Programming
+- [ ] Triton 문법 학습
+- [ ] Custom operator 작성
+- [ ] PyTorch 통합
+- [ ] 성능 비교 (CUDA vs Triton)
+- **완료일: ____________**
+
+**Phase 5.7 총 시간: ______ 시간**
+
+---
+
 ## Phase 6: 실전 프로젝트 (4주) ⏱️ 예상: 160시간
 
 ### Week 13: 문제 정의 및 연구
@@ -351,18 +534,22 @@
 ## 📊 전체 진행 통계
 
 ### 시간 투자
-- **총 계획 시간**: 680시간
+- **총 계획 시간**: 960시간
 - **실제 투자 시간**: ______ 시간
 - **일일 평균**: ______ 시간
 - **주간 평균**: ______ 시간
 
 ### 완료율
+- **Phase -1** (선택): _____%
 - **Phase 0**: _____%
 - **Phase 1**: _____%
 - **Phase 2**: _____%
 - **Phase 3**: _____%
+- **Phase 3.5**: _____%
 - **Phase 4**: _____%
 - **Phase 5**: _____%
+- **Phase 5.5**: _____%
+- **Phase 5.7**: _____%
 - **Phase 6**: _____%
 - **전체**: _____%
 
@@ -378,12 +565,16 @@
 ## 🏆 마일스톤
 
 ### Phase 완료
+- [ ] Phase -1 완료 (선택) - 날짜: ____________
 - [ ] Phase 0 완료 - 날짜: ____________
 - [ ] Phase 1 완료 - 날짜: ____________
 - [ ] Phase 2 완료 - 날짜: ____________
 - [ ] Phase 3 완료 - 날짜: ____________
+- [ ] Phase 3.5 완료 - 날짜: ____________
 - [ ] Phase 4 완료 - 날짜: ____________
 - [ ] Phase 5 완료 - 날짜: ____________
+- [ ] Phase 5.5 완료 - 날짜: ____________
+- [ ] Phase 5.7 완료 - 날짜: ____________
 - [ ] Phase 6 완료 - 날짜: ____________
 
 ### 기술 마스터
