@@ -145,6 +145,25 @@ Pre-training과 Fine-tuning의 핵심을 이해합니다.
 
 ---
 
+### [Phase 5.5: LLM Alignment & Advanced Architectures](./phase5.5-llm-alignment/) (2주) ⭐ **최신!**
+
+**"ChatGPT는 어떻게 만들어지나? DeepSeek-V3는 왜 빠른가?"**
+
+최신 LLM의 핵심 기술을 완전히 마스터합니다.
+
+#### Week 1: LLM Alignment
+- ✅ **Instruction Tuning**: Base LM → Instruction-following
+- ✅ **RLHF**: ChatGPT의 핵심 (Reward Model + PPO)
+- ✅ **DPO**: RLHF보다 간단한 최신 방법
+
+#### Week 2: Advanced Architectures
+- ✅ **MoE (Mixture of Experts)**: DeepSeek-V3, Mixtral
+- ✅ **Constitutional AI**: Claude의 alignment 방법
+
+**학습 후 달성 목표**: Mini ChatGPT 구축, 최신 SOTA 이해
+
+---
+
 ### [Phase 6: 실전 프로젝트](./phase6-project/) (4주)
 모든 학습 내용을 종합하여 자신만의 모델을 설계합니다.
 
