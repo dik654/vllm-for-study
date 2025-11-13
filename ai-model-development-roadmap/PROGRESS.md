@@ -7,6 +7,95 @@
 
 ---
 
+## 🆕 최신 업데이트 (2024)
+
+### 현대 LLM 기술 (추가됨!)
+이 섹션은 2023-2024년 프로덕션 LLM에서 사용되는 최신 기술들입니다.
+
+#### Modern Attention Variants
+- [ ] Multi-Query Attention (MQA) 이해 및 구현
+  - [ ] 87.5% KV cache 절감 원리 이해
+  - [ ] PaLM, Falcon에서의 사용 사례 분석
+- [ ] Grouped-Query Attention (GQA) 완전 구현
+  - [ ] Llama 2, Mistral의 GQA 설정 이해
+  - [ ] 효율적인 그룹 구조 구현 (repeat 없이)
+- [ ] MHA → GQA Uptraining 실습
+  - [ ] Mean pooling 전략 이해
+  - [ ] 5% compute로 변환 성공
+- **완료일: ____________**
+
+#### Modern Normalization & Activation
+- [ ] RMSNorm 구현 및 벤치마크
+  - [ ] LayerNorm 대비 15-20% 속도 향상 확인
+  - [ ] Llama, Mistral, Gemma에서의 사용 분석
+- [ ] SwiGLU Activation 완전 이해
+  - [ ] Gating mechanism 원리
+  - [ ] 표준 FFN 대비 성능 향상 확인
+- [ ] GeGLU 구현 (Gemma style)
+- **완료일: ____________**
+
+#### Context Length Extension
+- [ ] Position Interpolation (PI) 구현
+  - [ ] 4K → 32K 확장 실습
+  - [ ] 1000 step uptraining
+- [ ] YaRN (Yet another RoPE extensioN)
+  - [ ] Frequency-dependent scaling 이해
+  - [ ] 최고 품질 context extension 달성
+- [ ] NTK-Aware Scaling
+  - [ ] Zero-shot extension 실험
+- [ ] Dynamic NTK 구현
+  - [ ] Automatic length adjustment
+- **완료일: ____________**
+
+#### Modern LLM Architectures
+- [ ] Llama 2 완전 구현
+  - [ ] 7B configuration (GQA, RMSNorm, SwiGLU, RoPE)
+  - [ ] Efficient KV caching
+  - [ ] Weight tying
+- [ ] Mistral 7B 분석
+  - [ ] Sliding Window Attention (32K context)
+  - [ ] GQA with window
+- [ ] Gemma 7B 이해
+  - [ ] MHA 유지 (7B는 작아서)
+  - [ ] GeGLU activation
+- [ ] 세 모델 비교 분석
+- **완료일: ____________**
+
+#### Advanced Sampling Techniques
+- [ ] Mirostat Sampling 구현
+  - [ ] Constant perplexity 유지
+  - [ ] Adaptive threshold 이해
+- [ ] CFG for LLMs
+  - [ ] Unconditional guidance
+  - [ ] Scale 튜닝
+- [ ] Contrastive Decoding
+  - [ ] Weak model로 strong model 개선
+- [ ] Diverse Beam Search
+- **완료일: ____________**
+
+#### Inference Optimization
+- [ ] Speculative Decoding 완전 구현
+  - [ ] Draft model + Target model 설정
+  - [ ] 2-3x speedup 달성 (lossless!)
+  - [ ] Acceptance rate 분석
+- [ ] vLLM integration 실습
+  - [ ] PagedAttention 이해
+  - [ ] Continuous batching
+- **완료일: ____________**
+
+#### Alternative Architectures
+- [ ] State Space Models (S4) 이해
+  - [ ] HiPPO initialization
+  - [ ] O(n) complexity 분석
+- [ ] Mamba 구현
+  - [ ] Selective SSM 원리
+  - [ ] Input-dependent parameters
+  - [ ] Transformer 대비 장단점
+- [ ] Hybrid architectures (Jamba style)
+- **완료일: ____________**
+
+---
+
 ## Phase -1: 수학적 기초 (2주, 선택) ⏱️ 예상: 80시간
 
 ### Week 1: 핵심 수학
