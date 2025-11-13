@@ -82,15 +82,43 @@ python test_setup.py
 
 ---
 
-## 3️⃣ 학습 경로 선택
+## 3️⃣ 수학적 기초 자가 진단 (3분) ⭐ **중요!**
 
-### 🎯 완전 정복 경로 (12주, 추천)
-모든 Phase를 순서대로 진행합니다.
+### 📝 다음 문제를 **지금 당장** 풀어보세요:
 
+**1. 선형대수**: $\begin{bmatrix}1&2\\3&4\end{bmatrix} \times \begin{bmatrix}5\\6\end{bmatrix} = ?$
+
+**2. 미적분**: $f(x,y) = x^2 + 3xy$일 때, $\frac{\partial f}{\partial x} = ?$
+
+**3. 확률**: 동전을 3번 던져서 앞면이 정확히 2번 나올 확률은?
+
+### 🎯 결과 해석
+
+**모두 30초 내 풀림**: ✅ Phase 0부터 바로 시작!
+**1-2개 막힘**: ⚠️ Phase -1을 **1주**로 빠르게!
+**전부 막힘**: 🚨 Phase -1부터 **2주**로 천천히!
+
+> **"수학 없이 AI를 하는 것은 악보 없이 피아노를 치는 것과 같습니다."**
+>
+> 논문의 수식, Backpropagation 원리, Attention 메커니즘을 **진짜로** 이해하려면 수학이 필수입니다!
+
+---
+
+## 4️⃣ 학습 경로 선택
+
+### 🎯 완전 정복 경로 (14주, 추천)
+수학 기초 + 모든 Phase를 순서대로 진행합니다.
+
+**수학 필요하면:**
+```bash
+cd phase-1-math-foundations
+```
+→ [Phase -1 README](./phase-1-math-foundations/README.md) 시작
+
+**수학 준비됐으면:**
 ```bash
 cd phase0-huggingface-ecosystem
 ```
-
 → [Phase 0 README](./phase0-huggingface-ecosystem/README.md) 시작
 
 ### ⚡ 빠른 학습 경로 (6주)

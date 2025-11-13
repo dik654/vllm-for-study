@@ -26,6 +26,30 @@
 
 ## 🗺️ 로드맵 구조
 
+### ⚠️ **중요: 수학적 기초**
+
+**논문을 읽고 모델을 이해하려면 수학이 필수입니다!**
+
+수학 배경이 없거나 복습이 필요하다면, 반드시 Phase -1부터 시작하세요:
+
+### [Phase -1: AI를 위한 수학적 기초](./phase-1-math-foundations/) (2주, 선택)
+
+**대학 4년 수학을 AI에 필요한 2주로 압축!**
+
+- ✅ **선형대수**: Matrix 곱셈, Dot product, SVD (→ Attention, LoRA 이해)
+- ✅ **미적분**: Derivatives, Chain rule, Backpropagation (→ 모든 학습의 기초)
+- ✅ **확률/통계**: Gaussian, Bayes, MLE (→ Diffusion, Dropout 이해)
+- ✅ **정보이론**: Entropy, KL Divergence (→ Loss functions 이해)
+
+**완료 기준**:
+- Transformer 논문의 모든 수식 이해 가능
+- Backpropagation을 손으로 유도 가능
+- Attention 수식을 행렬 연산으로 구현 가능
+
+**스킵 가능 조건**: 대학 수학(선형대수, 미적분) 이미 학습했고 Chain rule, Matrix multiplication에 자신 있음
+
+---
+
 ### [Phase 0: HuggingFace 생태계 완벽 이해](./phase0-huggingface-ecosystem/) (1주)
 HuggingFace는 현대 AI 개발의 표준 플랫폼입니다. 모든 용어와 도구를 마스터합니다.
 
