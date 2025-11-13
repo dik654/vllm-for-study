@@ -1,6 +1,6 @@
 # 🎯 AI 모델 개발 완전 정복 로드맵
 
-> **"From Zero to Hero"** - 12주 만에 AI 모델 개발 전문가 되기
+> **"From Zero to Hero"** - 13.5주 만에 AI 모델 개발 전문가 되기
 
 ## 📖 소개
 
@@ -108,6 +108,35 @@ Pre-training과 Fine-tuning의 핵심을 이해합니다.
 - ✅ Conditional generation (Text-to-Image)
 
 **학습 후 달성 목표**: Stable Diffusion 수준의 모델 이해 및 커스터마이징
+
+---
+
+### [Phase 3.5: Video & Audio Generation](./phase3.5-video-audio-generation/) (1.5주)
+이미지를 넘어 시간축을 다루는 생성 모델을 마스터합니다.
+
+#### Week 7.5: 영상 생성
+- ✅ Temporal layers와 3D attention 이해
+- ✅ Stable Video Diffusion (SVD) 활용
+- ✅ AnimateDiff로 애니메이션 생성
+- ✅ Sora의 spacetime patches 개념
+
+#### Week 8: 음악/오디오 생성
+- ✅ Audio representations (waveform, spectrogram, latent)
+- ✅ EnCodec tokenization 원리
+- ✅ MusicGen으로 텍스트 → 음악
+- ✅ AudioLDM으로 사운드 이펙트
+
+#### 제어 가능한 생성 (Controllable Generation)
+- ✅ **ControlNet**: Pose, depth, canny로 정밀 제어
+- ✅ **Melody conditioning**: 허밍 → 음악 생성
+- ✅ **Style transfer**: 이미지/음악 리메이크
+- ✅ **Multi-modal**: ImageBind로 modality 연결
+
+**학습 후 달성 목표**:
+- 텍스트로 영상 생성 (Sora, AnimateDiff)
+- 텍스트/허밍으로 음악 생성 (MusicGen, Stable Audio)
+- ControlNet으로 이미지 정밀 제어
+- Cross-modal generation (Image → Music → Video)
 
 ---
 
@@ -290,11 +319,11 @@ fastapi
 
 ## 📅 학습 일정 가이드
 
-### 풀타임 학습 (12주)
+### 풀타임 학습 (13.5주)
 - 하루 8-10시간 투자
 - 주말 프로젝트 및 복습
 
-### 파트타임 학습 (24주)
+### 파트타임 학습 (27주)
 - 평일 저녁 2-3시간
 - 주말 4-6시간
 
