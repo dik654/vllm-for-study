@@ -164,6 +164,36 @@ Pre-training과 Fine-tuning의 핵심을 이해합니다.
 
 ---
 
+### [Phase 5.7: Hardware & Systems](./phase5.7-hardware-systems/) (1.5주) ⭐ **하드웨어!**
+
+**"GPU에서 벡터 내적이 실제로 어떻게 계산되는가?"**
+
+소프트웨어와 하드웨어를 모두 이해하는 완전한 AI 엔지니어가 됩니다.
+
+#### GPU Architecture
+- ✅ **GPU vs CPU**: 병렬 처리의 원리
+- ✅ **CUDA Core vs Tensor Core**: FP32 vs FP16 성능 차이
+- ✅ **Memory Hierarchy**: Register → Shared → Global
+- ✅ **실전**: Attention 계산이 GPU에서 어떻게 되는지
+
+#### CUDA Programming
+- ✅ **Kernel 작성**: Custom GPU 연산
+- ✅ **최적화**: Memory coalescing, Shared memory, Kernel fusion
+- ✅ **Triton**: 고수준 GPU 프로그래밍 (OpenAI)
+
+#### NPU/TPU
+- ✅ **Google TPU**: Systolic array 아키텍처
+- ✅ **Apple Neural Engine**: 저전력 추론
+- ✅ **NPU 설계 철학**: AI 전용 하드웨어
+
+**학습 후 달성 목표**:
+- ✅ GPU에서 행렬 곱셈 최적화 (2-3배 속도 향상)
+- ✅ CUDA/Triton으로 커스텀 kernel 작성
+- ✅ Memory/Compute bottleneck 식별 및 해결
+- ✅ NPU/TPU 아키텍처 이해
+
+---
+
 ### [Phase 6: 실전 프로젝트](./phase6-project/) (4주)
 모든 학습 내용을 종합하여 자신만의 모델을 설계합니다.
 
