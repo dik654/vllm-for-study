@@ -22,49 +22,55 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, d_model=512, num_heads=8):
         super().__init__()
         self.num_heads = num_heads
-        self.d_k = d_model // num_heads
+        self.d_k = d_model // num_heads  # 각 head의 차원 (예: 512/8 = 64)
 
         # 각 head마다 독립적인 Q, K, V projection
-        self.W_q = nn.Linear(d_model, d_model)  # (512, 512)
-        self.W_k = nn.Linear(d_model, d_model)  # (512, 512)
-        self.W_v = nn.Linear(d_model, d_model)  # (512, 512)
-        self.W_o = nn.Linear(d_model, d_model)
+        # 핵심: 8개 head 각각이 자신만의 K, V를 가짐 → 메모리 많이 사용
+        self.W_q = nn.Linear(d_model, d_model)  # Query projection (512, 512)
+        self.W_k = nn.Linear(d_model, d_model)  # Key projection (512, 512)
+        self.W_v = nn.Linear(d_model, d_model)  # Value projection (512, 512)
+        self.W_o = nn.Linear(d_model, d_model)  # Output projection
 
     def forward(self, x):
         batch_size, seq_len = x.shape[:2]
 
+        # 입력을 여러 head로 분할
         # (batch, seq_len, d_model) → (batch, num_heads, seq_len, d_k)
         Q = self.split_heads(self.W_q(x))  # (batch, 8, seq_len, 64)
         K = self.split_heads(self.W_k(x))  # (batch, 8, seq_len, 64)
         V = self.split_heads(self.W_v(x))  # (batch, 8, seq_len, 64)
 
-        # Attention
+        # Scaled Dot-Product Attention
+        # 의도: Q와 K의 유사도를 계산하여 어떤 token에 attention할지 결정
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        attn = F.softmax(scores, dim=-1)
-        out = torch.matmul(attn, V)
+        attn = F.softmax(scores, dim=-1)  # attention weights (확률 분포로 변환)
+        out = torch.matmul(attn, V)  # weighted sum of values
 
+        # 여러 head의 출력을 다시 합침
         # (batch, 8, seq_len, 64) → (batch, seq_len, 512)
         out = self.combine_heads(out)
-        return self.W_o(out)
+        return self.W_o(out)  # 최종 output projection
 ```
 
 ### KV Cache 메모리 문제
 
 **생성 시 KV Cache 필요**:
 ```python
-# Autoregressive generation
+# Autoregressive generation (자동회귀 생성)
 for step in range(max_new_tokens):
     # 이전 token들의 K, V를 cache에 저장
+    # 의도: 매번 전체 시퀀스를 다시 계산하지 않고 이전 계산 결과 재사용
     # cache shape: (batch, num_heads, seq_len, d_k)
-    past_k = cache['k']  # (1, 8, 1000, 64)
-    past_v = cache['v']  # (1, 8, 1000, 64)
+    past_k = cache['k']  # (1, 8, 1000, 64) - 이전까지의 모든 Key
+    past_v = cache['v']  # (1, 8, 1000, 64) - 이전까지의 모든 Value
 
-    # 새 token만 계산
-    q_new = W_q(x_new)  # (1, 1, 512)
-    k_new = W_k(x_new)
-    v_new = W_v(x_new)
+    # 새로운 token만 계산 (효율성을 위해)
+    q_new = W_q(x_new)  # (1, 1, 512) - 새 token의 Query
+    k_new = W_k(x_new)  # 새 token의 Key
+    v_new = W_v(x_new)  # 새 token의 Value
 
-    # Cache 업데이트
+    # Cache 업데이트 (concatenate)
+    # 문제: 시퀀스가 길어질수록 cache 크기가 선형 증가!
     cache['k'] = torch.cat([past_k, k_new], dim=2)
     cache['v'] = torch.cat([past_v, v_new], dim=2)
 ```
@@ -110,17 +116,23 @@ MQA:
 
 ```python
 class MultiQueryAttention(nn.Module):
-    """MQA: All Q heads share single K, V"""
+    """MQA: All Q heads share single K, V
+
+    핵심 아이디어: 8개의 Q head는 유지하되, K와 V는 1개만 사용
+    → KV cache가 8배 작아짐 (메모리 87.5% 절감)
+    """
     def __init__(self, d_model=512, num_heads=8):
         super().__init__()
         self.num_heads = num_heads
         self.d_k = d_model // num_heads  # 64
 
-        # Q: num_heads개
+        # Q: num_heads개 (변화 없음)
+        # 의도: 여러 관점에서 정보를 보는 것은 여전히 중요
         self.W_q = nn.Linear(d_model, d_model)  # (512, 512)
 
-        # K, V: 단 1개! (d_k 차원)
-        self.W_k = nn.Linear(d_model, self.d_k)  # (512, 64) ← 작아짐!
+        # K, V: 단 1개만! (d_k 차원)
+        # 핵심 변화: K, V는 모든 Q head가 공유 → 메모리 대폭 절감
+        self.W_k = nn.Linear(d_model, self.d_k)  # (512, 64) ← MHA의 1/8 크기!
         self.W_v = nn.Linear(d_model, self.d_k)  # (512, 64)
 
         self.W_o = nn.Linear(d_model, d_model)
@@ -128,22 +140,27 @@ class MultiQueryAttention(nn.Module):
     def forward(self, x):
         batch_size, seq_len = x.shape[:2]
 
-        # Q: (batch, num_heads, seq_len, d_k)
+        # Q: 여전히 여러 head로 분할 (다양한 관점 유지)
+        # (batch, seq_len, d_model) → (batch, num_heads, seq_len, d_k)
         Q = self.split_heads(self.W_q(x))  # (batch, 8, seq_len, 64)
 
-        # K, V: (batch, 1, seq_len, d_k) - single head
+        # K, V: single head만 생성 (메모리 절약의 핵심!)
+        # unsqueeze(1)로 head 차원 추가: (batch, 1, seq_len, d_k)
         K = self.W_k(x).unsqueeze(1)  # (batch, 1, seq_len, 64)
         V = self.W_v(x).unsqueeze(1)  # (batch, 1, seq_len, 64)
 
-        # K, V broadcast across all Q heads
+        # K, V가 모든 Q head에 broadcast됨
+        # 의도: 하나의 K, V를 8개의 다른 Q head가 각자의 방식으로 사용
         # (batch, 8, seq_len, 64) @ (batch, 1, 64, seq_len)
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        attn = F.softmax(scores, dim=-1)
+        attn = F.softmax(scores, dim=-1)  # 각 Q head가 다른 attention pattern 학습
 
+        # Attention 적용
         # (batch, 8, seq_len, seq_len) @ (batch, 1, seq_len, 64)
-        # → (batch, 8, seq_len, 64)
+        # → (batch, 8, seq_len, 64) (broadcasting으로 각 head에 적용)
         out = torch.matmul(attn, V)
 
+        # 여러 head 합치기
         out = self.combine_heads(out)
         return self.W_o(out)
 
@@ -236,23 +253,31 @@ GQA (Grouped-Query Attention):
 
 ```python
 class GroupedQueryAttention(nn.Module):
-    """GQA: Groups of Q heads share K, V"""
+    """GQA: Groups of Q heads share K, V
+
+    핵심 아이디어: MHA와 MQA의 중간 지점
+    - MHA: 8 Q heads → 8 KV heads (메모리 많이 사용, 성능 최고)
+    - MQA: 8 Q heads → 1 KV head (메모리 적게 사용, 성능 약간 하락)
+    - GQA: 8 Q heads → 2 KV heads (균형잡힌 선택! Llama 2, Mistral 사용)
+    """
     def __init__(self, d_model=512, num_heads=8, num_kv_heads=2):
         super().__init__()
         assert num_heads % num_kv_heads == 0, "num_heads must be divisible by num_kv_heads"
 
-        self.num_heads = num_heads        # 8 Q heads
-        self.num_kv_heads = num_kv_heads  # 2 KV heads
+        self.num_heads = num_heads        # 8 Q heads (쿼리는 여러 개)
+        self.num_kv_heads = num_kv_heads  # 2 KV heads (키/밸류는 적게)
         self.num_groups = num_heads // num_kv_heads  # 4 Q heads per group
+        # 의도: 4개의 Q head가 1개의 KV head를 공유
 
         self.d_k = d_model // num_heads  # 64
 
-        # Q: num_heads개
+        # Q: num_heads개 (변화 없음)
         self.W_q = nn.Linear(d_model, d_model)  # (512, 512)
 
-        # K, V: num_kv_heads개 (num_heads보다 작음)
+        # K, V: num_kv_heads개만 생성 (num_heads보다 훨씬 작음)
+        # 예: 8 heads → 2 kv_heads (75% 메모리 절감!)
         kv_dim = self.num_kv_heads * self.d_k  # 2 * 64 = 128
-        self.W_k = nn.Linear(d_model, kv_dim)  # (512, 128)
+        self.W_k = nn.Linear(d_model, kv_dim)  # (512, 128) ← MHA는 (512, 512)
         self.W_v = nn.Linear(d_model, kv_dim)  # (512, 128)
 
         self.W_o = nn.Linear(d_model, d_model)
@@ -260,25 +285,30 @@ class GroupedQueryAttention(nn.Module):
     def forward(self, x):
         batch_size, seq_len = x.shape[:2]
 
-        # Q: (batch, num_heads, seq_len, d_k)
+        # Q: 모든 head 생성 (다양한 관점 유지)
+        # (batch, seq_len, d_model) → (batch, num_heads, seq_len, d_k)
         Q = self.split_heads(self.W_q(x), self.num_heads)
         # (batch, 8, seq_len, 64)
 
-        # K, V: (batch, num_kv_heads, seq_len, d_k)
+        # K, V: 적은 수의 head만 생성 (메모리 절약)
+        # (batch, seq_len, kv_dim) → (batch, num_kv_heads, seq_len, d_k)
         K = self.split_heads(self.W_k(x), self.num_kv_heads)
         V = self.split_heads(self.W_v(x), self.num_kv_heads)
         # (batch, 2, seq_len, 64)
 
-        # Expand K, V to match Q: repeat each KV head for its group
+        # K, V를 Q에 맞게 확장: 각 KV head를 그룹 내 Q head들이 공유
+        # 의도: K₀을 Q₀,Q₁,Q₂,Q₃가 공유, K₁을 Q₄,Q₅,Q₆,Q₇가 공유
         # (batch, 2, seq_len, 64) → (batch, 8, seq_len, 64)
         K = K.repeat_interleave(self.num_groups, dim=1)
         V = V.repeat_interleave(self.num_groups, dim=1)
 
-        # Standard attention with expanded K, V
+        # 표준 attention 계산
+        # 각 Q head는 자신이 속한 그룹의 KV head를 사용
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
         attn = F.softmax(scores, dim=-1)
         out = torch.matmul(attn, V)
 
+        # 모든 head의 출력 결합
         out = self.combine_heads(out)
         return self.W_o(out)
 
@@ -298,32 +328,42 @@ class GroupedQueryAttention(nn.Module):
 
 ```python
 def forward_efficient(self, x):
-    """GQA without explicit repeat_interleave"""
+    """GQA without explicit repeat_interleave
+
+    더 효율적인 구현: repeat_interleave 없이 reshape와 broadcasting 사용
+    의도: 메모리 복사를 피하고 view 연산만으로 그룹 구조 표현
+    """
     batch_size, seq_len = x.shape[:2]
 
-    # Q: (batch, num_heads, seq_len, d_k)
+    # Q: 모든 head 생성
+    # (batch, seq_len, d_model) → (batch, num_heads, seq_len, d_k)
     Q = self.split_heads(self.W_q(x), self.num_heads)
 
-    # K, V: (batch, num_kv_heads, seq_len, d_k)
+    # K, V: 적은 수의 head만 생성
+    # (batch, seq_len, kv_dim) → (batch, num_kv_heads, seq_len, d_k)
     K = self.split_heads(self.W_k(x), self.num_kv_heads)
     V = self.split_heads(self.W_v(x), self.num_kv_heads)
 
-    # Reshape Q to group structure
+    # Q를 그룹 구조로 reshape (메모리 복사 없음!)
     # (batch, 8, seq_len, 64) → (batch, 2, 4, seq_len, 64)
+    # 의도: [KV head][Q heads per KV] 구조로 재배치
     Q = Q.view(batch_size, self.num_kv_heads, self.num_groups, seq_len, self.d_k)
 
-    # Add group dimension to K, V
+    # K, V에 그룹 차원 추가 (broadcasting을 위해)
     # (batch, 2, seq_len, 64) → (batch, 2, 1, seq_len, 64)
+    # 의도: 각 KV head가 해당 그룹의 모든 Q head와 매칭되도록
     K = K.unsqueeze(2)
     V = V.unsqueeze(2)
 
-    # Attention within groups
-    # Q: (batch, 2, 4, seq_len, 64)
-    # K: (batch, 2, 1, seq_len, 64)
+    # 그룹 내 Attention 계산
+    # Q: (batch, 2, 4, seq_len, 64) - 2개 KV group, 각각 4개 Q head
+    # K: (batch, 2, 1, seq_len, 64) - 2개 KV head, broadcasting됨
+    # 결과: 각 그룹 내에서만 attention 계산 (효율적!)
     scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
     attn = F.softmax(scores, dim=-1)
     out = torch.matmul(attn, V)
 
+    # 그룹 구조를 다시 펼침
     # (batch, 2, 4, seq_len, 64) → (batch, 8, seq_len, 64)
     out = out.view(batch_size, self.num_heads, seq_len, self.d_k)
 
@@ -415,7 +455,11 @@ print(f"GQA saves {reduction*100:.1f}% KV cache!")  # 75%
 
 ```python
 class GQAWithCache(nn.Module):
-    """Production-ready GQA with KV caching"""
+    """Production-ready GQA with KV caching
+
+    프로덕션 환경에서 사용하는 GQA + KV Cache 구현
+    핵심: 생성 시 이전 token의 K, V를 재사용하여 속도 향상
+    """
     def __init__(self, d_model=512, num_heads=8, num_kv_heads=2):
         super().__init__()
         self.num_heads = num_heads
@@ -431,49 +475,61 @@ class GQAWithCache(nn.Module):
 
     def forward(self, x, past_kv=None, use_cache=False):
         """
+        GQA forward pass with KV caching support
+
         Args:
-            x: (batch, seq_len, d_model)
-            past_kv: tuple of (past_k, past_v) or None
-            use_cache: whether to return updated cache
+            x: (batch, seq_len, d_model) - 현재 입력 token(s)
+            past_kv: tuple of (past_k, past_v) or None - 이전 step의 KV cache
+            use_cache: whether to return updated cache - 생성 시 True
 
         Returns:
-            out: (batch, seq_len, d_model)
-            new_kv: tuple of (k, v) if use_cache else None
+            out: (batch, seq_len, d_model) - 출력
+            new_kv: tuple of (k, v) if use_cache else None - 업데이트된 cache
         """
         batch_size, seq_len = x.shape[:2]
 
-        # Q for current tokens
+        # 현재 token(s)에 대한 Q 계산
+        # 의도: Query는 항상 새로 계산 (현재 token이 무엇을 볼지 결정)
         Q = self.split_heads(self.W_q(x), self.num_heads)
         # (batch, num_heads, seq_len, d_k)
 
-        # K, V for current tokens
+        # 현재 token(s)에 대한 K, V 계산
+        # 의도: 현재 token이 다른 token들에게 제공할 정보
         K_new = self.split_heads(self.W_k(x), self.num_kv_heads)
         V_new = self.split_heads(self.W_v(x), self.num_kv_heads)
         # (batch, num_kv_heads, seq_len, d_k)
 
-        # Concatenate with past KV if available
+        # 과거 KV와 현재 KV 결합
+        # 의도: 지금까지의 모든 token 정보를 누적
         if past_kv is not None:
             past_k, past_v = past_kv
+            # Concatenate along sequence dimension
             K = torch.cat([past_k, K_new], dim=2)
             V = torch.cat([past_v, V_new], dim=2)
         else:
+            # 첫 forward pass (prompt 처리)
             K, V = K_new, V_new
 
-        # Expand K, V for groups
+        # K, V를 그룹에 맞게 확장
+        # 의도: num_kv_heads개를 num_heads개로 확장 (그룹 공유)
         K_expanded = K.repeat_interleave(self.num_groups, dim=1)
         V_expanded = V.repeat_interleave(self.num_groups, dim=1)
         # (batch, num_heads, total_seq_len, d_k)
 
-        # Attention
+        # Attention 계산
+        # 의도: 현재 token이 지금까지의 모든 token에 attention
         scores = torch.matmul(Q, K_expanded.transpose(-2, -1)) / math.sqrt(self.d_k)
         attn = F.softmax(scores, dim=-1)
         out = torch.matmul(attn, V_expanded)
 
+        # 출력 변환
         out = self.combine_heads(out)
         out = self.W_o(out)
 
+        # Cache 반환 (다음 step에서 사용)
+        # 중요: 확장되지 않은 K, V를 저장 (메모리 효율!)
         if use_cache:
-            return out, (K, V)
+            return out, (K, V)  # K, V는 (batch, num_kv_heads, ...) 크기
         return out, None
 
     def split_heads(self, x, num_heads):
@@ -490,23 +546,31 @@ class GQAWithCache(nn.Module):
 
 # Usage: Autoregressive generation
 def generate_with_gqa(model, prompt_ids, max_new_tokens=50):
-    """Generation with KV caching"""
+    """Generation with KV caching
+
+    KV cache를 활용한 자동회귀 생성
+    의도: 매 step마다 전체 시퀀스를 재계산하지 않고, 이전 계산 결과 재사용
+    """
     model.eval()
     generated = prompt_ids
     past_kv = None
 
     with torch.no_grad():
-        # First forward pass: process entire prompt
+        # 첫 번째 forward pass: 전체 prompt 처리
+        # 의도: prompt의 모든 token에 대한 KV를 한 번에 계산하고 cache
         logits, past_kv = model(prompt_ids, past_kv=None, use_cache=True)
-        next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
+        next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)  # 마지막 position의 예측
         generated = torch.cat([generated, next_token], dim=1)
 
-        # Subsequent tokens: only process new token
+        # 이후 token들: 새 token만 처리 (효율성의 핵심!)
+        # 의도: 이전 token들의 K, V는 cache에서 가져오고, 새 token만 계산
         for _ in range(max_new_tokens - 1):
+            # 새 token만 입력 (1개 token) → 매우 빠름!
             logits, past_kv = model(next_token, past_kv=past_kv, use_cache=True)
             next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
             generated = torch.cat([generated, next_token], dim=1)
 
+            # EOS token 생성 시 중단
             if next_token.item() == eos_token_id:
                 break
 
@@ -691,32 +755,38 @@ def convert_mha_to_gqa(mha_checkpoint, num_groups):
     Convert trained MHA to GQA initialization
 
     Strategy: Mean pooling of K, V heads
+    전략: 여러 KV head를 평균내어 적은 수의 KV head로 변환
+    의도: 처음부터 학습하지 않고, 기존 MHA 지식을 GQA에 전이
     """
-    num_heads = mha_checkpoint['num_heads']
-    num_kv_heads = num_heads // num_groups
+    num_heads = mha_checkpoint['num_heads']  # 예: 8
+    num_kv_heads = num_heads // num_groups   # 예: 8 // 4 = 2
 
-    # MHA weights: (d_model, num_heads * d_k)
+    # MHA weights 가져오기: (d_model, num_heads * d_k)
     W_k_mha = mha_checkpoint['W_k']  # (512, 512) for 8 heads
     W_v_mha = mha_checkpoint['W_v']
 
-    # Reshape to (num_heads, d_k, d_model)
+    # head별로 분리: (num_heads, d_k, d_model)
+    # 의도: 각 head의 weight를 독립적으로 처리
     W_k_mha = W_k_mha.T.view(num_heads, d_k, d_model)
     W_v_mha = W_v_mha.T.view(num_heads, d_k, d_model)
 
-    # Group and mean pool
-    # (8, d_k, d_model) → (2, d_k, d_model)
+    # 그룹별로 mean pooling
+    # (8, d_k, d_model) → (2, 4, d_k, d_model) → (2, d_k, d_model)
+    # 의도: 그룹 내 head들의 평균 = 해당 그룹을 대표하는 KV head
+    # 예: head 0,1,2,3의 평균 → KV head 0
+    #     head 4,5,6,7의 평균 → KV head 1
     W_k_gqa = W_k_mha.view(num_kv_heads, num_groups, d_k, d_model).mean(dim=1)
     W_v_gqa = W_v_mha.view(num_kv_heads, num_groups, d_k, d_model).mean(dim=1)
 
-    # Reshape back
+    # GQA 형태로 reshape: (num_kv_heads * d_k, d_model)
     W_k_gqa = W_k_gqa.view(num_kv_heads * d_k, d_model).T
     W_v_gqa = W_v_gqa.view(num_kv_heads * d_k, d_model).T
 
     return {
-        'W_q': mha_checkpoint['W_q'],  # Keep Q unchanged
-        'W_k': W_k_gqa,
-        'W_v': W_v_gqa,
-        'W_o': mha_checkpoint['W_o'],
+        'W_q': mha_checkpoint['W_q'],  # Q는 변경 없음 (유지)
+        'W_k': W_k_gqa,  # K는 축소됨 (8 heads → 2 heads)
+        'W_v': W_v_gqa,  # V는 축소됨 (8 heads → 2 heads)
+        'W_o': mha_checkpoint['W_o'],  # Output projection 유지
     }
 
 
@@ -726,14 +796,18 @@ def uptrain_to_gqa(mha_model, train_loader, num_steps=5000):
     Continue training MHA model as GQA
 
     Llama 2 approach: 5% of original pre-training compute
+    핵심 아이디어: 처음부터 학습하지 않고, 적은 compute로 GQA로 변환
     """
-    # Convert to GQA initialization
+    # MHA → GQA 초기화 (mean pooling 사용)
+    # 의도: 좋은 시작점에서 출발하여 빠르게 수렴
     gqa_model = convert_mha_to_gqa(mha_model.state_dict(), num_groups=4)
 
-    # Small learning rate (10x smaller than pre-training)
+    # 작은 learning rate (pre-training보다 10배 작게)
+    # 의도: 이미 학습된 weight를 크게 변경하지 않고 미세 조정
     optimizer = torch.optim.AdamW(gqa_model.parameters(), lr=1e-5)
 
-    # Continue training
+    # Continue training (uptraining)
+    # 의도: GQA 구조에 맞게 weight 적응시키기
     for step, batch in enumerate(train_loader):
         if step >= num_steps:
             break
@@ -749,10 +823,11 @@ def uptrain_to_gqa(mha_model, train_loader, num_steps=5000):
     return gqa_model
 
 
-# Meta's findings:
-# - Uptraining takes ~5% of original pre-training compute
-# - Recovers 99%+ of original quality
-# - Massive savings compared to training from scratch
+# Meta's findings (Llama 2 논문):
+# - Uptraining은 원래 pre-training의 ~5% compute만 필요
+# - 원래 모델의 99%+ 성능을 회복
+# - 처음부터 학습하는 것에 비해 엄청난 비용 절감
+#   (예: 수백만 달러 → 수만 달러)
 ```
 
 ---

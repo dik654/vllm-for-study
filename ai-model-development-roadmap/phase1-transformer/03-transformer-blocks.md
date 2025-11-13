@@ -291,26 +291,41 @@ class RMSNorm(nn.Module):
 
     Used in: Llama, Llama 2, Mistral, Gemma, T5, PaLM
     Paper: https://arxiv.org/abs/1910.07467
+
+    핵심 아이디어: LayerNorm의 mean subtraction 제거
+    - LayerNorm보다 15-20% 빠름
+    - 성능은 거의 동일 (< 0.1% 차이)
+    - 현대 LLM의 표준
     """
     def __init__(self, dim, eps=1e-6):
         super().__init__()
-        self.eps = eps
+        self.eps = eps  # 수치 안정성을 위한 작은 값
         # Learnable scale parameter (γ)
+        # 의도: 각 차원마다 다른 스케일을 학습
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
         """
+        RMSNorm forward pass
+
         Args:
-            x: (batch, seq_len, dim)
+            x: (batch, seq_len, dim) - 입력 tensor
         Returns:
-            normalized: (batch, seq_len, dim)
+            normalized: (batch, seq_len, dim) - 정규화된 tensor
+
+        의도: 입력의 크기(scale)를 정규화하여 gradient flow 안정화
         """
-        # Compute RMS
-        # x²의 평균을 구한 뒤 sqrt
+        # RMS (Root Mean Square) 계산
+        # x²의 평균을 구한 뒤 sqrt → 입력의 "크기" 측정
+        # 의도: 각 token의 activation 크기를 파악
         rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
 
-        # Normalize and scale
+        # 정규화: 각 token을 자신의 RMS로 나눔
+        # 의도: 모든 token이 비슷한 크기를 가지도록 (gradient 안정화)
         x_normalized = x / rms
+
+        # 학습 가능한 weight로 스케일 조정
+        # 의도: 정규화 후 최적의 스케일을 모델이 학습
         return self.weight * x_normalized
 
 
@@ -394,42 +409,60 @@ class SwiGLU(nn.Module):
 
     Used in: PaLM, Llama, Llama 2, Mistral
     Paper: https://arxiv.org/abs/2002.05202 (GLU Variants)
+
+    핵심 아이디어: Gating mechanism을 사용한 강력한 FFN
+    - 표준 FFN보다 더 표현력 있음
+    - LSTM/GRU의 gate와 유사한 원리
+    - 실험적으로 성능 향상 입증
     """
     def __init__(self, d_model, d_ff, bias=False):
         """
         Args:
-            d_model: Input dimension
-            d_ff: Hidden dimension (usually 4 * d_model for Transformers)
-            bias: Whether to use bias in linear layers
+            d_model: Input dimension (입력 차원)
+            d_ff: Hidden dimension (은닉층 차원, 보통 2.7 * d_model)
+            bias: Whether to use bias in linear layers (Llama는 False)
         """
         super().__init__()
 
-        # Two parallel projections for gating
+        # 두 개의 병렬 projection (gating의 핵심!)
         # Note: d_ff는 보통 표준 FFN보다 작음 (2.7 * d_model)
-        self.W = nn.Linear(d_model, d_ff, bias=bias)  # Gate projection
-        self.V = nn.Linear(d_model, d_ff, bias=bias)  # Value projection
+        # 의도: 두 경로로 나눠서 하나는 gate, 하나는 value로 사용
+        self.W = nn.Linear(d_model, d_ff, bias=bias)  # Gate projection (제어 신호)
+        self.V = nn.Linear(d_model, d_ff, bias=bias)  # Value projection (변환될 값)
 
         # Output projection
         self.W2 = nn.Linear(d_ff, d_model, bias=bias)
 
     def forward(self, x):
         """
+        SwiGLU forward pass
+
         Args:
-            x: (batch, seq_len, d_model)
+            x: (batch, seq_len, d_model) - 입력
         Returns:
-            out: (batch, seq_len, d_model)
+            out: (batch, seq_len, d_model) - 출력
+
+        동작 원리:
+        1. 입력을 두 경로로 변환 (W, V)
+        2. W 경로는 Swish로 activate → gate 역할
+        3. gate와 value를 element-wise multiplication
+        4. 최종 projection으로 원래 차원 복원
         """
-        # Swish activation
-        # Swish(x) = x * sigmoid(x)
+        # Swish activation을 gate 경로에 적용
+        # Swish(x) = x * sigmoid(x) (부드러운 gating)
+        # 의도: 어떤 정보를 얼마나 통과시킬지 결정
         swish_gate = F.silu(self.W(x))  # SiLU = Swish
 
-        # Value path
+        # Value path: 변환될 실제 값
+        # 의도: gate에 의해 선택적으로 통과될 정보
         value = self.V(x)
 
-        # Gated activation
+        # Gated activation: gate × value
+        # 핵심: token마다, 차원마다 다른 "필터"를 적용
+        # 의도: 동적으로 정보 흐름 제어 (LSTM gate와 유사)
         hidden = swish_gate * value
 
-        # Output projection
+        # Output projection: 원래 차원으로 복원
         return self.W2(hidden)
 
 

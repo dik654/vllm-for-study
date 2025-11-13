@@ -213,109 +213,166 @@ class SwiGLU(nn.Module):
 
 
 class LlamaBlock(nn.Module):
-    """Llama 2 Transformer Block"""
+    """Llama 2 Transformer Block
+
+    현대 LLM의 표준 구조:
+    - Pre-LN (normalization이 먼저)
+    - GQA (메모리 효율적 attention)
+    - SwiGLU (강력한 FFN)
+    - RMSNorm (빠른 정규화)
+    - No bias (파라미터 절감)
+    """
     def __init__(self, config):
         super().__init__()
+        # Grouped-Query Attention (GQA)
+        # 의도: KV cache 메모리를 75% 절감하면서 성능 유지
         self.attn = GroupedQueryAttention(
             config['d_model'],
             config['num_heads'],
-            config['num_kv_heads'],
-            bias=config.get('bias', False)
+            config['num_kv_heads'],  # num_heads보다 작음 (예: 32 vs 8)
+            bias=config.get('bias', False)  # Llama는 bias 사용 안함
         )
 
+        # SwiGLU activation FFN
+        # 의도: 표준 FFN보다 더 표현력 있는 변환
         self.ffn = SwiGLU(
             config['d_model'],
-            config['d_ff'],
+            config['d_ff'],  # 보통 2.7 * d_model
             bias=config.get('bias', False)
         )
 
+        # RMSNorm (LayerNorm보다 빠름)
+        # 의도: gradient 안정화 & 빠른 정규화
         self.attn_norm = RMSNorm(config['d_model'], eps=config.get('norm_eps', 1e-5))
         self.ffn_norm = RMSNorm(config['d_model'], eps=config.get('norm_eps', 1e-5))
 
     def forward(self, x, mask=None, past_kv=None):
+        """
+        Llama Block forward pass
+
+        구조: Pre-LN (norm → sublayer → residual)
+        의도: 훈련 안정성 향상 (gradient flow 개선)
+        """
         # Pre-norm attention
+        # 의도: 정규화 후 attention → 안정적인 학습
         attn_out, new_kv = self.attn(self.attn_norm(x), mask, past_kv)
-        h = x + attn_out
+        h = x + attn_out  # Residual connection
 
         # Pre-norm FFN
+        # 의도: 정규화 후 FFN → 안정적인 학습
         ffn_out = self.ffn(self.ffn_norm(h))
-        out = h + ffn_out
+        out = h + ffn_out  # Residual connection
 
         return out, new_kv
 
 
 class Llama2(nn.Module):
-    """Complete Llama 2 Model"""
+    """Complete Llama 2 Model
+
+    Meta의 Llama 2 아키텍처 완전 구현
+    - 7B: 32 layers, 4096 dim, 32 Q heads, 8 KV heads
+    - 13B: 40 layers, 5120 dim, 40 heads (MHA)
+    - 70B: 80 layers, 8192 dim, 64 Q heads, 8 KV heads
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
 
         # Token embedding
+        # 의도: token ID → dense vector representation
         self.tok_emb = nn.Embedding(config['vocab_size'], config['d_model'])
 
-        # Transformer blocks
+        # Transformer blocks (stack of LlamaBlock)
+        # 의도: 깊은 계층을 통해 복잡한 패턴 학습
         self.layers = nn.ModuleList([
             LlamaBlock(config)
             for _ in range(config['num_layers'])
         ])
 
-        # Final norm
+        # Final normalization
+        # 의도: 출력 전 마지막 정규화 (안정적인 logits)
         self.norm = RMSNorm(config['d_model'], eps=config.get('norm_eps', 1e-5))
 
-        # Output head
+        # Output head (language modeling head)
+        # 의도: hidden state → vocabulary 확률 분포
         self.output = nn.Linear(config['d_model'], config['vocab_size'], bias=False)
 
-        # Tie weights (embedding and output share weights)
+        # Weight tying: embedding과 output이 weight 공유
+        # 의도: 파라미터 절약 + 성능 향상 (empirically proven)
         self.output.weight = self.tok_emb.weight
 
     def forward(self, input_ids, past_kvs=None):
         """
-        Args:
-            input_ids: (batch, seq_len)
-            past_kvs: list of (K, V) tuples for each layer
-        Returns:
-            logits: (batch, seq_len, vocab_size)
-            new_past_kvs: updated KV cache
-        """
-        x = self.tok_emb(input_ids)
+        Llama 2 forward pass
 
+        Args:
+            input_ids: (batch, seq_len) - 입력 token IDs
+            past_kvs: list of (K, V) tuples for each layer - KV cache
+        Returns:
+            logits: (batch, seq_len, vocab_size) - 다음 token 예측 logits
+            new_past_kvs: updated KV cache - 생성 시 재사용
+        """
+        # Token embedding
+        x = self.tok_emb(input_ids)  # (batch, seq_len, d_model)
+
+        # 각 layer를 통과하면서 KV cache 수집
+        # 의도: autoregressive 생성 시 이전 계산 재사용
         new_past_kvs = []
         for i, layer in enumerate(self.layers):
             past_kv = past_kvs[i] if past_kvs is not None else None
             x, new_kv = layer(x, past_kv=past_kv)
             new_past_kvs.append(new_kv)
 
+        # 최종 정규화
         x = self.norm(x)
-        logits = self.output(x)
+
+        # Vocabulary에 대한 logits 계산
+        logits = self.output(x)  # (batch, seq_len, vocab_size)
 
         return logits, new_past_kvs
 
     @torch.no_grad()
     def generate(self, input_ids, max_new_tokens=50, temperature=1.0, top_k=None):
-        """Autoregressive generation with KV caching"""
-        self.eval()
-        past_kvs = None
+        """Autoregressive generation with KV caching
+
+        텍스트 생성 함수 (KV cache 사용)
+        의도: 효율적인 autoregressive 생성
+
+        Args:
+            input_ids: (batch, seq_len) - prompt token IDs
+            max_new_tokens: 생성할 최대 token 수
+            temperature: 샘플링 온도 (높을수록 다양한 출력)
+            top_k: top-k 샘플링 (None이면 사용 안함)
+        """
+        self.eval()  # 평가 모드
+        past_kvs = None  # KV cache 초기화
 
         for _ in range(max_new_tokens):
             # Forward pass
             if past_kvs is None:
-                # First step: process entire prompt
+                # 첫 번째 step: 전체 prompt 처리
+                # 의도: prompt의 모든 token KV를 한 번에 cache
                 logits, past_kvs = self(input_ids)
             else:
-                # Subsequent steps: only process last token
+                # 이후 step: 마지막 token만 처리 (효율성!)
+                # 의도: 이전 token들은 cache에서 재사용
                 logits, past_kvs = self(input_ids[:, -1:], past_kvs)
 
-            # Sample next token
-            logits = logits[:, -1, :] / temperature
+            # 다음 token 샘플링
+            # 마지막 position의 logits만 사용
+            logits = logits[:, -1, :] / temperature  # Temperature scaling
 
+            # Top-k sampling (optional)
+            # 의도: 상위 k개 token만 고려 (품질 향상)
             if top_k is not None:
                 v, _ = torch.topk(logits, top_k)
                 logits[logits < v[:, [-1]]] = -float('inf')
 
+            # 확률 분포로 변환 후 샘플링
             probs = F.softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
 
-            # Append to sequence
+            # 생성된 token을 시퀀스에 추가
             input_ids = torch.cat([input_ids, next_token], dim=1)
 
         return input_ids

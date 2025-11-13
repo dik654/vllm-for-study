@@ -104,17 +104,22 @@ class SpeculativeDecoder:
     Speculative Decoding with draft model
 
     Paper: https://arxiv.org/abs/2211.17192
+
+    핵심 아이디어: 작은 모델로 "추측"하고 큰 모델로 "검증"
+    - 2-3x 속도 향상 (lossless! 품질 저하 없음)
+    - Draft model: 빠르지만 덜 정확 (1B)
+    - Target model: 느리지만 정확 (7B-70B)
     """
     def __init__(self, target_model, draft_model, K=5):
         """
         Args:
-            target_model: Large model (7B, 70B)
-            draft_model: Small model (0.5B, 1B)
-            K: Number of speculative tokens
+            target_model: Large model (7B, 70B) - 최종 품질 결정
+            draft_model: Small model (0.5B, 1B) - 후보 생성
+            K: Number of speculative tokens - 한 번에 추측할 token 수
         """
         self.target = target_model
         self.draft = draft_model
-        self.K = K
+        self.K = K  # 보통 4-5개가 최적
 
     @torch.no_grad()
     def generate(
@@ -123,60 +128,74 @@ class SpeculativeDecoder:
         max_new_tokens=100,
         temperature=1.0
     ):
-        """Generate with speculative decoding"""
+        """Generate with speculative decoding
+
+        의도: 작은 모델의 속도 + 큰 모델의 품질
+        """
         generated = input_ids
         num_accepted_total = 0
         num_drafted_total = 0
 
         while len(generated[0]) < len(input_ids[0]) + max_new_tokens:
-            # 1. Draft K tokens with small model
+            # ===== PHASE 1: Draft K tokens (빠른 추측) =====
+            # 작은 모델로 K개 token 순차 생성
+            # 의도: 빠르게 후보 생성 (속도가 중요)
             draft_tokens = []
             draft_probs_list = []
             current_input = generated
 
             for k in range(self.K):
+                # 작은 모델로 다음 token 예측 (빠름!)
                 draft_logits = self.draft(current_input).logits[:, -1, :] / temperature
                 draft_probs = F.softmax(draft_logits, dim=-1)
                 draft_token = torch.multinomial(draft_probs, num_samples=1)
 
                 draft_tokens.append(draft_token)
-                draft_probs_list.append(draft_probs)
+                draft_probs_list.append(draft_probs)  # 나중에 검증용
 
+                # 생성한 token을 입력에 추가 (autoregressive)
                 current_input = torch.cat([current_input, draft_token], dim=1)
 
             draft_tokens = torch.cat(draft_tokens, dim=1)  # (batch, K)
             num_drafted_total += self.K
 
-            # 2. Verify with large model (parallel!)
-            # Concatenate drafted tokens
+            # ===== PHASE 2: Verify (병렬 검증) =====
+            # 큰 모델로 K개 token을 한 번에 검증!
+            # 핵심: K개를 sequential이 아닌 parallel로 처리!
             verify_input = torch.cat([generated, draft_tokens], dim=1)
 
-            # Single forward pass for all K tokens
+            # 단 1번의 forward pass로 K개 token 모두 검증
+            # 의도: 병렬 처리로 효율성 극대화
             target_logits = self.target(verify_input).logits / temperature
             target_probs = F.softmax(target_logits, dim=-1)
 
-            # 3. Acceptance loop
+            # ===== PHASE 3: Accept/Reject (확률 기반 결정) =====
+            # 각 draft token을 순서대로 검토
             num_accepted = 0
             for k in range(self.K):
-                # Get target probability for drafted token
+                # 큰 모델이 생각하는 이 위치의 확률 분포
                 target_prob_k = target_probs[:, -self.K + k, :]
                 draft_prob_k = draft_probs_list[k]
                 draft_token_k = draft_tokens[:, k]
 
-                # Acceptance probability
+                # Acceptance criterion (확률 비교)
+                # 큰 모델이 이 token을 얼마나 선호하는지
                 p_target = target_prob_k[0, draft_token_k]
                 p_draft = draft_prob_k[0, draft_token_k]
 
+                # Acceptance probability: min(1, p_target / p_draft)
+                # 의도: 큰 모델이 더 선호하면 무조건 accept
                 acceptance_prob = (p_target / (p_draft + 1e-10)).clamp(max=1.0)
 
-                # Accept or reject
+                # Accept or reject (확률적 결정)
                 if torch.rand(1).item() < acceptance_prob:
-                    # Accept
+                    # Accept: draft token이 좋은 선택!
                     generated = torch.cat([generated, draft_token_k.unsqueeze(0)], dim=1)
                     num_accepted += 1
                 else:
-                    # Reject: sample correction from adjusted distribution
+                    # Reject: draft token 거부, 수정된 분포에서 샘플링
                     # P'(x) = norm(max(0, P_target(x) - P_draft(x)))
+                    # 의도: 큰 모델이 선호하는 방향으로 보정
                     adjusted_probs = torch.clamp(
                         target_prob_k - draft_prob_k,
                         min=0
@@ -186,7 +205,7 @@ class SpeculativeDecoder:
                     correction_token = torch.multinomial(adjusted_probs, num_samples=1)
                     generated = torch.cat([generated, correction_token], dim=1)
                     num_accepted += 1
-                    break  # Stop after first rejection
+                    break  # 첫 rejection 후 중단 (나머지는 무효화)
 
             num_accepted_total += num_accepted
 
@@ -194,7 +213,7 @@ class SpeculativeDecoder:
             if generated[0, -1] == tokenizer.eos_token_id:
                 break
 
-        # Statistics
+        # Statistics (성능 측정)
         acceptance_rate = num_accepted_total / num_drafted_total
         speedup = num_accepted_total / (len(generated[0]) - len(input_ids[0]))
 
