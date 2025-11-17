@@ -46,7 +46,7 @@ if [ ! -d "$MODEL_PATH" ]; then
 fi
 
 # Run encryption
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
     "$MODEL_PATH" \
     "$OUTPUT_PATH" \
     --key-id "$KEY_ID" \

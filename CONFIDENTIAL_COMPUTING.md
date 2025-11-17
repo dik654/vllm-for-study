@@ -67,7 +67,8 @@ vLLM Confidential Computing enables users to run private AI inference workloads 
 ### 1. Check TEE Status
 
 ```bash
-python -m vllm.entrypoints.cli.confidential_cli status
+vllm-confidential status
+# Or: python -m vllm.entrypoints.cli.confidential_cli status
 ```
 
 Output:
@@ -90,13 +91,13 @@ Features:
 
 ```bash
 # Using local KMS (development only)
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
   /path/to/your/model \
   /path/to/encrypted/model \
   --key-id my-secret-key
 
 # Using AWS KMS (production)
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
   /path/to/your/model \
   /path/to/encrypted/model \
   --key-id arn:aws:kms:us-east-1:123456789:key/abc-123 \
@@ -155,7 +156,7 @@ export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=your_access_key
 export AWS_SECRET_ACCESS_KEY=your_secret_key
 
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
   ./model ./encrypted_model \
   --key-id arn:aws:kms:us-east-1:123456789:key/abc-123 \
   --kms-provider aws_kms
@@ -166,7 +167,7 @@ python -m vllm.entrypoints.cli.confidential_cli encrypt \
 ```bash
 export AZURE_KEY_VAULT_URL=https://your-vault.vault.azure.net
 
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
   ./model ./encrypted_model \
   --key-id your-key-name \
   --kms-provider azure_key_vault
@@ -178,7 +179,7 @@ python -m vllm.entrypoints.cli.confidential_cli encrypt \
 export GCP_PROJECT_ID=your-project-id
 export GCP_LOCATION=global
 
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
   ./model ./encrypted_model \
   --key-id keyRingId/cryptoKeyId \
   --kms-provider gcp_kms
@@ -190,7 +191,7 @@ python -m vllm.entrypoints.cli.confidential_cli encrypt \
 export VAULT_ADDR=https://vault.example.com
 export VAULT_TOKEN=your-token
 
-python -m vllm.entrypoints.cli.confidential_cli encrypt \
+vllm-confidential encrypt \
   ./model ./encrypted_model \
   --key-id transit-key-name \
   --kms-provider hashicorp_vault

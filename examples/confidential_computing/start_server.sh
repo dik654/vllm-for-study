@@ -38,7 +38,7 @@ echo ""
 
 # Check TEE status
 echo "Checking TEE status..."
-python -m vllm.entrypoints.cli.confidential_cli status
+vllm-confidential status
 echo ""
 
 # Check if encrypted model exists
