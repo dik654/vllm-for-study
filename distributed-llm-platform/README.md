@@ -43,7 +43,9 @@
 ## 📚 문서
 
 - **[SPECIFICATION.md](./SPECIFICATION.md)** - 상세 기술 스펙 (API, DB 스키마, 보안 등)
+- **[WORKFLOW_SPECIFICATION.md](./WORKFLOW_SPECIFICATION.md)** - n8n 스타일 워크플로우 UI 사양
 - **[TODO.md](./TODO.md)** - 구현 로드맵 및 체크리스트
+- **[examples/workflows/](./examples/workflows/)** - 워크플로우 예시 (JSON)
 
 ---
 
@@ -66,21 +68,56 @@ cd distributed-llm-platform
 cp .env.example .env
 # .env 파일을 편집하여 설정값 입력
 
-# 3. Docker 컨테이너 시작
+# 3. 의존성 설치
+pip install -r requirements.txt
+# 또는 Poetry 사용
+poetry install
+
+# 4. Docker 컨테이너 시작 (PostgreSQL, Redis, etc.)
+make docker-up
+# 또는
 docker-compose up -d
 
-# 4. Database migration
-cd router
-poetry install
-poetry run alembic upgrade head
+# 5. Database migration
+make db-upgrade
+# 또는
+alembic upgrade head
 
-# 5. Router 실행
-poetry run uvicorn main:app --reload --port 8000
+# 6. Router 실행
+make run-router
+# 또는
+python -m router.main
 
-# 6. Provider 실행 (별도 터미널)
-cd ../provider
-poetry run uvicorn main:app --reload --port 8001
+# 7. Provider 실행 (별도 터미널)
+make run-provider
+# 또는
+python -m provider.main
 ```
+
+### Makefile 명령어
+
+```bash
+make help          # 사용 가능한 명령어 보기
+make install       # 의존성 설치
+make test          # 테스트 실행
+make lint          # 린트 체크
+make format        # 코드 포맷팅
+make docker-up     # Docker 서비스 시작
+make docker-down   # Docker 서비스 중지
+make migrate       # 마이그레이션 생성
+make db-upgrade    # 마이그레이션 적용
+make run-router    # Router 로컬 실행
+make run-provider  # Provider 로컬 실행
+```
+
+### 서비스 접속 주소
+
+- **Router API**: http://localhost:8000
+- **Provider API**: http://localhost:8001
+- **API Documentation (Router)**: http://localhost:8000/docs
+- **API Documentation (Provider)**: http://localhost:8001/docs
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3000 (admin/admin)
 
 ---
 
@@ -259,11 +296,14 @@ Memory/Storage: Provider 단가 + 20% margin
 
 ## 🗓️ 로드맵
 
-### Phase 1: MVP (Week 1-6)
-- [x] 프로젝트 설정
-- [x] Database & Redis 설정
-- [x] Router 기본 구현
-- [x] 단순 라우팅 및 Proxy
+### Phase 1: MVP (Week 1-6) ✅ In Progress
+- [x] 프로젝트 설정 및 구조 생성
+- [x] Docker 환경 구성
+- [x] Database 모델 정의 (Provider, User, Request, Workflow)
+- [x] FastAPI 기본 애플리케이션
+- [x] Alembic 마이그레이션 설정
+- [ ] Router 기본 구현
+- [ ] 단순 라우팅 및 Proxy
 
 ### Phase 2: Core Features (Week 7-14)
 - [ ] Provider Agent 구현

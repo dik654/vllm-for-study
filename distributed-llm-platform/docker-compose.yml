@@ -1,0 +1,155 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: distributed-llm-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: distributed_llm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - distributed-llm-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: distributed-llm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - distributed-llm-network
+
+  # Central Router
+  router:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.router
+    container_name: distributed-llm-router
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/distributed_llm
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./router:/app/router
+      - ./shared:/app/shared
+    networks:
+      - distributed-llm-network
+    command: uvicorn router.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker (for workflow execution)
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.router
+    container_name: distributed-llm-celery-worker
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/distributed_llm
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./router:/app/router
+      - ./shared:/app/shared
+    networks:
+      - distributed-llm-network
+    command: celery -A router.core.celery_app worker --loglevel=info
+
+  # Provider Agent (Example - can be scaled)
+  provider-01:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.provider
+    container_name: distributed-llm-provider-01
+    environment:
+      - PROVIDER_ID=provider_001
+      - PROVIDER_NAME=Provider 01
+      - ROUTER_URL=http://router:8000
+      - VLLM_HOST=localhost
+      - VLLM_PORT=8001
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+    depends_on:
+      - router
+    volumes:
+      - ./provider:/app/provider
+      - ./shared:/app/shared
+    networks:
+      - distributed-llm-network
+    command: uvicorn provider.main:app --host 0.0.0.0 --port 8001 --reload
+
+  # Prometheus (Monitoring)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: distributed-llm-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - distributed-llm-network
+
+  # Grafana (Dashboards)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: distributed-llm-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - distributed-llm-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  distributed-llm-network:
+    driver: bridge

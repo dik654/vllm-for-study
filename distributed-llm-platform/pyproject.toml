@@ -1,0 +1,78 @@
+[tool.poetry]
+name = "distributed-llm-platform"
+version = "0.1.0"
+description = "Distributed LLM Platform with OpenRouter-style routing and n8n-style workflow UI"
+authors = ["Distributed LLM Team"]
+readme = "README.md"
+packages = [
+    { include = "router" },
+    { include = "provider" },
+    { include = "shared" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+pydantic = "^2.5.0"
+pydantic-settings = "^2.1.0"
+sqlalchemy = "^2.0.25"
+alembic = "^1.13.0"
+asyncpg = "^0.29.0"  # PostgreSQL async driver
+psycopg2-binary = "^2.9.9"  # PostgreSQL sync driver
+redis = {extras = ["hiredis"], version = "^5.0.1"}
+httpx = "^0.26.0"
+python-multipart = "^0.0.6"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+python-dotenv = "^1.0.0"
+structlog = "^24.1.0"
+prometheus-client = "^0.19.0"
+
+# Workflow execution
+celery = {extras = ["redis"], version = "^5.3.4"}
+networkx = "^3.2.1"  # For topological sort (DAG)
+
+# Optional: vLLM integration
+# vllm = "^0.2.7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.23.2"
+pytest-cov = "^4.1.0"
+black = "^23.12.1"
+isort = "^5.13.2"
+flake8 = "^7.0.0"
+mypy = "^1.8.0"
+pre-commit = "^3.6.0"
+httpx = "^0.26.0"  # For testing
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --cov=router --cov=provider --cov=shared --cov-report=html --cov-report=term-missing"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
