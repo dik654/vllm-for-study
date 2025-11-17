@@ -1,0 +1,96 @@
+{
+  "id": "wf_simple_chat_001",
+  "name": "Simple Chat",
+  "description": "사용자 입력을 받아 LLM으로 응답 생성하는 기본 채팅 워크플로우",
+  "version": "1.0.0",
+  "created_at": "2025-11-17T10:00:00Z",
+  "updated_at": "2025-11-17T10:00:00Z",
+  "user_id": "user_demo",
+  "nodes": [
+    {
+      "id": "node_input_1",
+      "type": "utility.input",
+      "name": "User Input",
+      "position": {
+        "x": 100,
+        "y": 200
+      },
+      "parameters": {
+        "input_type": "text",
+        "default_value": "안녕하세요, 오늘 날씨가 어떤가요?"
+      },
+      "enabled": true,
+      "notes": "사용자로부터 질문을 입력받습니다"
+    },
+    {
+      "id": "node_llm_1",
+      "type": "llm.inference",
+      "name": "LLM Chat",
+      "position": {
+        "x": 400,
+        "y": 200
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "temperature": 0.7,
+        "max_tokens": 500,
+        "enable_cache": true,
+        "system_prompt": "You are a helpful AI assistant. Answer questions concisely and accurately."
+      },
+      "enabled": true,
+      "notes": "LLM을 사용하여 사용자 질문에 답변합니다"
+    },
+    {
+      "id": "node_output_1",
+      "type": "utility.output",
+      "name": "Response",
+      "position": {
+        "x": 700,
+        "y": 200
+      },
+      "parameters": {
+        "output_format": "json",
+        "destination": null
+      },
+      "enabled": true,
+      "notes": "LLM 응답을 JSON 형식으로 출력합니다"
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1",
+      "source_node_id": "node_input_1",
+      "source_output": "data",
+      "target_node_id": "node_llm_1",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_2",
+      "source_node_id": "node_llm_1",
+      "source_output": "response",
+      "target_node_id": "node_output_1",
+      "target_input": "data",
+      "enabled": true
+    }
+  ],
+  "metadata": {
+    "tags": [
+      "llm",
+      "chat",
+      "simple",
+      "beginner"
+    ],
+    "category": "chatbot",
+    "is_public": true,
+    "fork_count": 0,
+    "execution_count": 0
+  },
+  "settings": {
+    "timeout_seconds": 300,
+    "max_retries": 3,
+    "error_handling": "stop",
+    "parallel_execution": false,
+    "webhook_url": null
+  }
+}

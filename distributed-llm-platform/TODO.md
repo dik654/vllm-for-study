@@ -606,8 +606,289 @@
 
 ---
 
+---
+
+## Phase 6: Workflow UI System (Week 36-55) - n8n 스타일 워크플로우
+
+### Week 36-39: Workflow Backend (기본)
+
+#### 18.1 Database & Models
+- [ ] Workflows 테이블 생성
+  - [ ] workflow_id, user_id, name, nodes, connections
+  - [ ] metadata, settings, is_public
+- [ ] Workflow Executions 테이블 생성
+  - [ ] execution_id, workflow_id, state, input/output
+  - [ ] progress, node_outputs, cost
+- [ ] SQLAlchemy 모델 정의
+- [ ] Alembic migration 생성
+
+#### 18.2 Workflow CRUD API
+- [ ] Create Workflow
+  - [ ] `POST /v1/workflows`
+  - [ ] Workflow validation (DAG 검증)
+  - [ ] Node type validation
+- [ ] Get Workflow
+  - [ ] `GET /v1/workflows/{id}`
+- [ ] Update Workflow
+  - [ ] `PATCH /v1/workflows/{id}`
+  - [ ] Version control (optional)
+- [ ] Delete Workflow
+  - [ ] `DELETE /v1/workflows/{id}`
+- [ ] List Workflows
+  - [ ] `GET /v1/workflows`
+  - [ ] Filtering (category, tags, public)
+  - [ ] Pagination
+
+#### 18.3 Node Registry
+- [ ] Node Definition 시스템
+  - [ ] LLM Inference 노드 정의
+  - [ ] Input/Output 노드 정의
+- [ ] Node Validation 로직
+- [ ] Node Parameter Schema
+
+### Week 40-43: Workflow Execution Engine
+
+#### 19.1 기본 실행 엔진
+- [ ] WorkflowExecutor 클래스 구현
+- [ ] Topological Sort (DAG 실행 순서)
+- [ ] State Management (노드 간 데이터 공유)
+- [ ] Error Handling
+  - [ ] Stop 전략
+  - [ ] Continue 전략
+  - [ ] Rollback 전략 (optional)
+
+#### 19.2 노드 Executor 구현
+- [ ] LLM Inference 노드 실행
+  - [ ] Router의 LLM API 호출
+  - [ ] Token usage 추적
+- [ ] Input 노드 실행
+  - [ ] 초기 데이터 주입
+- [ ] Output 노드 실행
+  - [ ] 최종 결과 반환
+
+#### 19.3 Execution API
+- [ ] Execute Workflow
+  - [ ] `POST /v1/workflows/{id}/execute`
+  - [ ] 비동기 실행 (Celery or asyncio)
+- [ ] Get Execution Status
+  - [ ] `GET /v1/executions/{exec_id}`
+  - [ ] 실시간 진행 상태 추적
+- [ ] Get Execution Result
+  - [ ] `GET /v1/executions/{exec_id}/result`
+  - [ ] Node별 출력 포함
+- [ ] Cancel Execution
+  - [ ] `POST /v1/executions/{exec_id}/cancel`
+
+#### 19.4 Execution Streaming (SSE)
+- [ ] Server-Sent Events 설정
+- [ ] Real-time progress 전송
+  - [ ] node_start, node_complete 이벤트
+  - [ ] 중간 결과 스트리밍
+
+### Week 44-47: Frontend UI (React Flow)
+
+#### 20.1 프로젝트 설정
+- [ ] Next.js 14 프로젝트 생성
+- [ ] React Flow 설치 및 설정
+- [ ] Tailwind CSS 설정
+- [ ] shadcn/ui 컴포넌트 추가
+- [ ] Zustand state management 설정
+
+#### 20.2 Workflow Canvas
+- [ ] ReactFlow 캔버스 구현
+  - [ ] Background, Controls, MiniMap
+  - [ ] 노드 드래그 앤 드롭
+  - [ ] 연결 생성/삭제
+- [ ] Custom Node 컴포넌트
+  - [ ] LLM Node 컴포넌트
+  - [ ] Input/Output Node 컴포넌트
+  - [ ] 노드별 아이콘 및 스타일
+- [ ] Edge 커스터마이징
+  - [ ] 활성/비활성 상태
+  - [ ] Animation
+
+#### 20.3 Node Palette
+- [ ] Draggable Node Palette 구현
+- [ ] 노드 카테고리별 분류
+  - [ ] AI Services
+  - [ ] Resources
+  - [ ] Utilities
+- [ ] 노드 검색 기능
+
+#### 20.4 Properties Panel
+- [ ] 선택된 노드 정보 표시
+- [ ] 노드 파라미터 편집
+  - [ ] Select, Number, String, Boolean 입력
+  - [ ] Validation
+- [ ] 노드 이름 변경
+- [ ] 노드 활성화/비활성화 토글
+
+#### 20.5 Workflow Management UI
+- [ ] Workflow 목록 페이지
+- [ ] Workflow 생성/편집/삭제
+- [ ] Workflow 저장 (Auto-save)
+- [ ] JSON Export/Import
+  - [ ] JSON Editor (Monaco Editor)
+  - [ ] Download/Upload
+
+### Week 48-51: Advanced Nodes
+
+#### 21.1 Image Generation Node
+- [ ] Node Definition
+- [ ] Frontend Component
+- [ ] Backend Executor
+  - [ ] Image Gen API 연동 (Stable Diffusion)
+  - [ ] 이미지 저장 (Storage)
+
+#### 21.2 Video Generation Node
+- [ ] Node Definition
+- [ ] Frontend Component
+- [ ] Backend Executor
+  - [ ] Video Gen API 연동
+  - [ ] 비디오 저장
+
+#### 21.3 Audio/Speech Node
+- [ ] Node Definition
+- [ ] Frontend Component
+- [ ] Backend Executor
+  - [ ] TTS API 연동
+  - [ ] 오디오 저장
+
+#### 21.4 Agent Communication Node
+- [ ] Node Definition
+- [ ] Frontend Component
+- [ ] Backend Executor
+  - [ ] Multi-agent protocol 구현
+  - [ ] Debate/Sequential/Parallel 모드
+
+#### 21.5 Resource Nodes
+- [ ] Memory Allocation Node
+  - [ ] 메모리 할당 API 호출
+- [ ] Storage Allocation Node
+  - [ ] 스토리지 할당 API 호출
+
+#### 21.6 Utility Nodes
+- [ ] Conditional (If-Else) Node
+  - [ ] 조건 평가 로직
+  - [ ] True/False 출력
+- [ ] Loop Node
+  - [ ] 배열 반복 처리
+  - [ ] 반복 결과 수집
+
+### Week 52-55: SDK & Production Features
+
+#### 22.1 JavaScript/TypeScript SDK
+- [ ] SDK 패키지 생성 (`@distributed-llm/workflow-sdk`)
+- [ ] WorkflowClient 클래스
+  - [ ] CRUD operations
+  - [ ] Execute workflow
+  - [ ] Stream execution
+- [ ] Workflow Builder API
+  - [ ] addNode, connect 메서드
+  - [ ] toJSON, fromJSON
+- [ ] TypeScript 타입 정의
+- [ ] NPM 배포
+
+#### 22.2 Python SDK
+- [ ] SDK 패키지 생성 (`distributed-llm-workflow`)
+- [ ] WorkflowClient 클래스
+- [ ] Workflow Builder API
+- [ ] Type hints
+- [ ] PyPI 배포
+
+#### 22.3 Java SDK (Optional)
+- [ ] Maven 프로젝트 생성
+- [ ] WorkflowClient 클래스
+- [ ] Builder Pattern 구현
+- [ ] Maven Central 배포
+
+#### 22.4 Workflow Templates
+- [ ] Public Template 시스템
+  - [ ] `GET /v1/workflows/templates`
+  - [ ] 카테고리별 필터링
+- [ ] Fork 기능
+  - [ ] `POST /v1/workflows/{id}/fork`
+  - [ ] Fork count 추적
+- [ ] Template Discovery UI
+  - [ ] 인기 템플릿 랭킹
+  - [ ] 검색 기능
+
+#### 22.5 비용 추정
+- [ ] CostEstimator 클래스 구현
+- [ ] 노드별 비용 계산 로직
+- [ ] UI에 예상 비용 표시
+  - [ ] 실행 전 비용 미리보기
+  - [ ] 실행 후 실제 비용 비교
+
+#### 22.6 Execution Monitoring
+- [ ] 실행 로그 UI
+  - [ ] 노드별 실행 시간
+  - [ ] 에러 메시지
+- [ ] 진행률 표시
+- [ ] 실행 중 취소 기능
+
+#### 22.7 병렬 실행
+- [ ] 병렬 실행 가능 노드 감지
+- [ ] asyncio.gather로 병렬 처리
+- [ ] UI에서 병렬 실행 옵션
+
+#### 22.8 Workflow Versioning (Optional)
+- [ ] 버전 관리 시스템
+- [ ] 이전 버전 복원
+- [ ] 변경 이력 조회
+
+---
+
+## Phase 7: Workflow Marketplace (Optional, Week 56+)
+
+### Week 56-58: Marketplace 기능
+
+#### 23.1 Template Rating & Review
+- [ ] Rating 시스템 (1-5 stars)
+- [ ] Review 작성 API
+  - [ ] `POST /v1/workflows/{id}/reviews`
+- [ ] 평균 별점 계산
+- [ ] Review 목록 조회
+
+#### 23.2 Template Discovery
+- [ ] 인기 템플릿 랭킹
+- [ ] 최신 템플릿
+- [ ] 카테고리별 필터
+- [ ] 태그 기반 검색
+- [ ] 추천 시스템 (ML-based, optional)
+
+#### 23.3 Monetization (Optional)
+- [ ] 유료 템플릿 시스템
+- [ ] 결제 연동 (Stripe)
+- [ ] Creator 수익 분배
+- [ ] Marketplace 수수료 (10-20%)
+
+---
+
+## Testing Strategy (Workflow)
+
+### Unit Tests
+- [ ] Workflow validation
+- [ ] Node executor (각 노드 타입별)
+- [ ] Topological sort
+- [ ] Cost estimator
+
+### Integration Tests
+- [ ] Workflow CRUD API
+- [ ] Workflow execution end-to-end
+- [ ] SDK integration
+
+### E2E Tests
+- [ ] UI workflow creation
+- [ ] Workflow execution with real services
+- [ ] Template fork
+
+---
+
 ## 참고
 
 - [SPECIFICATION.md](./SPECIFICATION.md) - 상세 기술 스펙
+- [WORKFLOW_SPECIFICATION.md](./WORKFLOW_SPECIFICATION.md) - 워크플로우 상세 스펙
+- [examples/workflows/](./examples/workflows/) - 워크플로우 예시
 - [Architecture Diagram](./docs/architecture.png)
 - [API Documentation](./docs/api.md)

@@ -1,0 +1,252 @@
+{
+  "id": "wf_voice_assistant_005",
+  "name": "Voice Assistant Pipeline",
+  "description": "음성 입력을 받아 처리하고 음성으로 응답하는 완전한 음성 어시스턴트 워크플로우",
+  "version": "1.0.0",
+  "created_at": "2025-11-17T14:00:00Z",
+  "updated_at": "2025-11-17T14:00:00Z",
+  "user_id": "user_demo",
+  "nodes": [
+    {
+      "id": "node_input_audio",
+      "type": "utility.input",
+      "name": "Voice Input",
+      "position": {
+        "x": 100,
+        "y": 300
+      },
+      "parameters": {
+        "input_type": "file",
+        "default_value": null
+      },
+      "enabled": true,
+      "notes": "사용자 음성 파일을 입력받습니다"
+    },
+    {
+      "id": "node_memory_context",
+      "type": "resource.memory",
+      "name": "Conversation Context",
+      "position": {
+        "x": 100,
+        "y": 450
+      },
+      "parameters": {
+        "memory_type": "context_memory",
+        "size_gb": 1.0,
+        "ttl_hours": 12
+      },
+      "enabled": true,
+      "notes": "대화 컨텍스트를 저장합니다"
+    },
+    {
+      "id": "node_llm_understand",
+      "type": "llm.inference",
+      "name": "Understand Request",
+      "position": {
+        "x": 600,
+        "y": 300
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are a helpful voice assistant. Analyze the user's request and determine: 1) Intent (question, command, conversation), 2) Required information, 3) Appropriate response tone. Respond in a conversational manner.",
+        "temperature": 0.7,
+        "max_tokens": 300,
+        "enable_cache": true
+      },
+      "enabled": true,
+      "notes": "사용자 요청을 이해하고 분석합니다"
+    },
+    {
+      "id": "node_condition_intent",
+      "type": "utility.condition",
+      "name": "Check Intent Type",
+      "position": {
+        "x": 850,
+        "y": 300
+      },
+      "parameters": {
+        "condition": "intent === 'question'"
+      },
+      "enabled": true,
+      "notes": "요청 유형을 확인합니다"
+    },
+    {
+      "id": "node_llm_answer",
+      "type": "llm.inference",
+      "name": "Generate Answer",
+      "position": {
+        "x": 1100,
+        "y": 200
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are a knowledgeable assistant. Provide accurate, concise answers suitable for voice response. Keep responses under 100 words unless more detail is explicitly requested.",
+        "temperature": 0.6,
+        "max_tokens": 200,
+        "enable_cache": true
+      },
+      "enabled": true,
+      "notes": "질문에 대한 답변을 생성합니다"
+    },
+    {
+      "id": "node_llm_chat",
+      "type": "llm.inference",
+      "name": "Casual Response",
+      "position": {
+        "x": 1100,
+        "y": 400
+      },
+      "parameters": {
+        "model": "llama-3-8b",
+        "system_prompt": "You are a friendly conversational assistant. Engage naturally and keep responses brief and personable.",
+        "temperature": 0.9,
+        "max_tokens": 100,
+        "enable_cache": false
+      },
+      "enabled": true,
+      "notes": "일반 대화 응답을 생성합니다"
+    },
+    {
+      "id": "node_audio_tts",
+      "type": "audio.generation",
+      "name": "Text to Speech",
+      "position": {
+        "x": 1350,
+        "y": 300
+      },
+      "parameters": {
+        "model": "xtts-v2",
+        "voice": "female-1",
+        "language": "en",
+        "speed": 1.0
+      },
+      "enabled": true,
+      "notes": "텍스트 응답을 음성으로 변환합니다"
+    },
+    {
+      "id": "node_storage_audio",
+      "type": "resource.storage",
+      "name": "Save Response Audio",
+      "position": {
+        "x": 1600,
+        "y": 300
+      },
+      "parameters": {
+        "storage_type": "context_storage",
+        "tier": "hot",
+        "size_gb": 0.5
+      },
+      "enabled": true,
+      "notes": "응답 음성을 저장합니다"
+    },
+    {
+      "id": "node_output_voice",
+      "type": "utility.output",
+      "name": "Voice Response",
+      "position": {
+        "x": 1850,
+        "y": 300
+      },
+      "parameters": {
+        "output_format": "json",
+        "destination": null
+      },
+      "enabled": true,
+      "notes": "음성 응답 URL과 텍스트를 출력합니다"
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1",
+      "source_node_id": "node_input_audio",
+      "source_output": "data",
+      "target_node_id": "node_llm_understand",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_2",
+      "source_node_id": "node_memory_context",
+      "source_output": "memory_id",
+      "target_node_id": "node_llm_understand",
+      "target_input": "context",
+      "enabled": true
+    },
+    {
+      "id": "conn_3",
+      "source_node_id": "node_llm_understand",
+      "source_output": "response",
+      "target_node_id": "node_condition_intent",
+      "target_input": "value",
+      "enabled": true
+    },
+    {
+      "id": "conn_4",
+      "source_node_id": "node_condition_intent",
+      "source_output": "true",
+      "target_node_id": "node_llm_answer",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_5",
+      "source_node_id": "node_condition_intent",
+      "source_output": "false",
+      "target_node_id": "node_llm_chat",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_6",
+      "source_node_id": "node_llm_answer",
+      "source_output": "response",
+      "target_node_id": "node_audio_tts",
+      "target_input": "text",
+      "enabled": true
+    },
+    {
+      "id": "conn_7",
+      "source_node_id": "node_llm_chat",
+      "source_output": "response",
+      "target_node_id": "node_audio_tts",
+      "target_input": "text",
+      "enabled": true
+    },
+    {
+      "id": "conn_8",
+      "source_node_id": "node_audio_tts",
+      "source_output": "audio_data",
+      "target_node_id": "node_storage_audio",
+      "target_input": "data",
+      "enabled": true
+    },
+    {
+      "id": "conn_9",
+      "source_node_id": "node_storage_audio",
+      "source_output": "storage_url",
+      "target_node_id": "node_output_voice",
+      "target_input": "data",
+      "enabled": true
+    }
+  ],
+  "metadata": {
+    "tags": [
+      "voice",
+      "assistant",
+      "speech",
+      "tts",
+      "conversation"
+    ],
+    "category": "voice_assistant",
+    "is_public": true,
+    "fork_count": 98,
+    "execution_count": 467
+  },
+  "settings": {
+    "timeout_seconds": 120,
+    "max_retries": 2,
+    "error_handling": "continue",
+    "parallel_execution": false,
+    "webhook_url": null
+  }
+}

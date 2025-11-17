@@ -1525,3 +1525,324 @@ profit_margin = 54.36 / 311.58 = 17.4%
 - Anthropic Claude Pricing: https://www.anthropic.com/pricing
 - OpenRouter Pricing: https://openrouter.ai/pricing
 - vLLM Documentation: https://docs.vllm.ai/
+
+---
+
+## 14. Workflow UI 시스템
+
+### 14.1 개요
+
+사용자가 n8n처럼 노드를 연결하여 AI 서비스 워크플로우를 시각적으로 구성하고, 생성된 워크플로우를 JSON으로 변환하여 SDK를 통해 프로그래밍 방식으로 사용할 수 있는 시스템.
+
+**핵심 가치**:
+- **No-code/Low-code**: 코딩 없이 복잡한 AI 파이프라인 구성
+- **재사용성**: 워크플로우를 템플릿으로 공유 및 포크
+- **개발자 친화적**: SDK를 통해 프로그래밍 방식 접근 가능
+- **비용 투명성**: 실행 전 비용 예측 기능
+
+### 14.2 주요 노드 타입
+
+#### AI Service Nodes
+1. **LLM Inference** - 텍스트 생성 (Llama, GPT, Claude)
+2. **Image Generation** - 이미지 생성 (Stable Diffusion, DALL-E)
+3. **Video Generation** - 동영상 생성 (Runway, Stable Video)
+4. **Audio/Speech** - 음성 합성 (ElevenLabs, XTTS)
+5. **Agent Communication** - 다중 에이전트 통신
+
+#### Resource Nodes
+6. **Memory Allocation** - Context/GP 메모리 할당
+7. **Storage Allocation** - Context/GP 스토리지 할당
+
+#### Utility Nodes
+8. **Input/Output** - 워크플로우 입출력
+9. **Conditional** - 조건 분기 (If-Else)
+10. **Loop** - 배열 반복 처리
+
+### 14.3 Workflow JSON 구조
+
+```typescript
+interface Workflow {
+  id: string;
+  name: string;
+  version: string;
+  nodes: WorkflowNode[];           // 노드 목록
+  connections: Connection[];       // 연결 목록
+  metadata: WorkflowMetadata;
+  settings: WorkflowSettings;
+}
+```
+
+**예시**: [WORKFLOW_SPECIFICATION.md](./WORKFLOW_SPECIFICATION.md) 참고
+
+### 14.4 Frontend UI (React Flow 기반)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Header: Name | Save | Execute | Export | Cost Estimate │
+├──────────┬──────────────────────────────┬───────────────┤
+│  Node    │   Workflow Canvas            │  Properties   │
+│  Palette │   (Drag & Drop)              │  Panel        │
+│          │                              │               │
+│  - AI    │   ┌──────┐    ┌──────┐      │  Parameters:  │
+│    LLM   │   │Input │───▶│ LLM  │──┐   │  - model      │
+│    Image │   └──────┘    └──────┘  │   │  - temp       │
+│    Video │                         │   │  - tokens     │
+│          │   ┌──────┐    ┌──────┐  │   │               │
+│  - Res   │   │Image │───▶│Video │◀─┘   │               │
+│    Memory│   └──────┘    └──────┘      │               │
+│    Store │        │                     │               │
+│          │        ▼                     │               │
+│  - Utils │   ┌──────┐                  │               │
+│    Input │   │Output│                  │               │
+│    If    │   └──────┘                  │               │
+│    Loop  │                              │               │
+└──────────┴──────────────────────────────┴───────────────┘
+│  Footer: Status | Logs | Estimated Cost: $0.025         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 14.5 SDK 지원 (JavaScript, Java, Python)
+
+**JavaScript/TypeScript SDK**:
+```typescript
+import { WorkflowClient } from '@distributed-llm/workflow-sdk';
+
+const client = new WorkflowClient({ apiKey: 'user_xxx' });
+
+// 프로그래밍 방식으로 워크플로우 생성
+const workflow = new Workflow('My Workflow')
+  .addNode('input', { type: 'utility.input' })
+  .addNode('llm', {
+    type: 'llm.inference',
+    parameters: { model: 'llama-3-70b', temperature: 0.7 }
+  })
+  .connect('input', 'data', 'llm', 'prompt');
+
+// 실행
+const execution = await client.executeWorkflow(workflow, {
+  input: { data: '안녕하세요' }
+});
+
+const result = await execution.waitForCompletion();
+console.log(result.output);
+```
+
+**Python SDK**:
+```python
+from distributed_llm.workflow import WorkflowClient, Workflow
+
+client = WorkflowClient(api_key='user_xxx')
+
+workflow = (Workflow('My Workflow')
+    .add_node('input', type='utility.input')
+    .add_node('llm', type='llm.inference', parameters={
+        'model': 'llama-3-70b',
+        'temperature': 0.7
+    })
+    .connect('input', 'data', 'llm', 'prompt')
+)
+
+execution = client.execute_workflow(workflow, input={'data': '안녕하세요'})
+result = execution.wait_for_completion()
+print(result.output)
+```
+
+### 14.6 Workflow API Endpoints
+
+#### 14.6.1 Workflow Management
+```
+POST   /v1/workflows              # 워크플로우 생성
+GET    /v1/workflows/{id}         # 워크플로우 조회
+PATCH  /v1/workflows/{id}         # 워크플로우 수정
+DELETE /v1/workflows/{id}         # 워크플로우 삭제
+GET    /v1/workflows              # 워크플로우 목록 조회
+```
+
+#### 14.6.2 Workflow Execution
+```
+POST   /v1/workflows/{id}/execute           # 워크플로우 실행
+GET    /v1/executions/{exec_id}             # 실행 상태 조회
+GET    /v1/executions/{exec_id}/result      # 실행 결과 조회
+GET    /v1/executions/{exec_id}/stream      # 실행 스트리밍 (SSE)
+POST   /v1/executions/{exec_id}/cancel      # 실행 취소
+```
+
+#### 14.6.3 Workflow Templates
+```
+GET    /v1/workflows/templates               # Public 템플릿 목록
+POST   /v1/workflows/{id}/fork               # 워크플로우 포크
+```
+
+### 14.7 Workflow Execution Engine
+
+**실행 로직**:
+1. **실행 순서 결정**: Topological sort로 DAG 순서 계산
+2. **노드별 실행**: 각 노드 타입에 맞는 서비스 호출
+3. **상태 관리**: 노드 간 데이터 공유 (state)
+4. **에러 처리**: stop / continue / rollback 전략
+5. **병렬 실행**: 독립적인 노드들 동시 실행 (optional)
+
+```python
+class WorkflowExecutor:
+    async def execute(self, workflow: Workflow, input_data: dict) -> dict:
+        # 1. 실행 순서 결정
+        execution_order = self._calculate_execution_order()
+
+        # 2. 각 노드 실행
+        for node_id in execution_order:
+            node = workflow.get_node(node_id)
+            node_input = self._prepare_node_input(node)
+            node_output = await self._execute_node(node, node_input)
+            self.state[node_id] = node_output
+
+        # 3. 최종 출력 반환
+        return self.state
+```
+
+### 14.8 비용 추정
+
+실행 전 예상 비용 계산:
+
+```python
+class CostEstimator:
+    def estimate_workflow_cost(self, workflow: Workflow) -> dict:
+        total_cost = Decimal("0")
+
+        for node in workflow.nodes:
+            if node.type == "llm.inference":
+                # 예상 토큰 수 * 단가
+                cost = estimate_tokens() * token_rate
+            elif node.type == "image.generation":
+                cost = Decimal("0.02")  # 이미지당
+            # ... 기타 노드들
+
+            total_cost += cost
+
+        return {"total_estimated_cost_usd": float(total_cost)}
+```
+
+### 14.9 Database Schema
+
+**Workflows Table**:
+```sql
+CREATE TABLE workflows (
+    workflow_id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    version VARCHAR(16) NOT NULL,
+
+    nodes JSONB NOT NULL,           -- 노드 배열
+    connections JSONB NOT NULL,     -- 연결 배열
+    metadata JSONB NOT NULL,        -- 메타데이터
+    settings JSONB NOT NULL,        -- 설정
+
+    is_public BOOLEAN DEFAULT FALSE,
+    fork_count INT DEFAULT 0,
+    execution_count INT DEFAULT 0,
+
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    INDEX idx_user_workflows (user_id, created_at),
+    INDEX idx_public_workflows (is_public, created_at)
+);
+```
+
+**Workflow Executions Table**:
+```sql
+CREATE TABLE workflow_executions (
+    execution_id VARCHAR(64) PRIMARY KEY,
+    workflow_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+
+    state VARCHAR(32) NOT NULL,     -- running, completed, failed, cancelled
+    input_data JSONB NOT NULL,
+    output_data JSONB,
+
+    progress JSONB,                 -- 진행 상태
+    node_outputs JSONB,             -- 각 노드 출력
+
+    started_at TIMESTAMP NOT NULL,
+    completed_at TIMESTAMP,
+
+    total_duration_ms INT,
+    total_cost_usd DECIMAL(12, 8),
+
+    error_message TEXT,
+
+    FOREIGN KEY (workflow_id) REFERENCES workflows(workflow_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+
+    INDEX idx_user_executions (user_id, started_at),
+    INDEX idx_workflow_executions (workflow_id, started_at),
+    INDEX idx_state (state)
+);
+```
+
+### 14.10 구현 우선순위
+
+**Phase 1: 기본 워크플로우 (Week 1-4)**
+- [ ] Workflow CRUD API
+- [ ] 기본 실행 엔진 (sequential)
+- [ ] LLM, Input/Output 노드
+- [ ] Database schema
+
+**Phase 2: Frontend UI (Week 5-8)**
+- [ ] React Flow 캔버스
+- [ ] Node Palette & Properties
+- [ ] JSON Export/Import
+- [ ] 실행 모니터링 UI
+
+**Phase 3: Advanced Nodes (Week 9-12)**
+- [ ] Image/Video/Audio 노드
+- [ ] Agent Communication 노드
+- [ ] Memory/Storage 노드
+- [ ] Conditional/Loop 노드
+
+**Phase 4: SDK (Week 13-16)**
+- [ ] JavaScript SDK
+- [ ] Python SDK
+- [ ] Java SDK
+- [ ] Documentation
+
+**Phase 5: Production Features (Week 17-20)**
+- [ ] Public templates
+- [ ] Fork 기능
+- [ ] 비용 추정
+- [ ] 병렬 실행 최적화
+
+### 14.11 예시 Workflows
+
+다음 예시 워크플로우를 `examples/workflows/` 디렉토리에서 확인할 수 있습니다:
+
+1. **01-simple-chat.json** - 기본 LLM 채팅
+2. **02-multimodal-pipeline.json** - 텍스트 → 이미지 → 비디오 → 음성 생성
+3. **03-ai-debate.json** - 다중 에이전트 토론
+4. **04-blog-post-generator.json** - 블로그 글 + 이미지 생성
+5. **05-voice-assistant.json** - 음성 입력/출력 어시스턴트
+
+상세 스펙: [WORKFLOW_SPECIFICATION.md](./WORKFLOW_SPECIFICATION.md)
+
+---
+
+## 15. 확장 로드맵
+
+### 15.1 Workflow Marketplace
+- Public workflow 템플릿 공유
+- Rating & Review 시스템
+- 인기 워크플로우 랭킹
+- Monetization (유료 템플릿)
+
+### 15.2 고급 기능
+- **Workflow Versioning**: Git-like version control
+- **A/B Testing**: 워크플로우 변형 테스트
+- **Scheduling**: Cron-based 자동 실행
+- **Webhooks**: 외부 이벤트 트리거
+- **Collaboration**: 팀 공유 및 공동 편집
+
+### 15.3 AI 최적화
+- **Auto-optimization**: ML 기반 노드 파라미터 자동 튜닝
+- **Cost Reduction**: 자동 모델 선택 (성능 vs 비용)
+- **Smart Routing**: 실행 패턴 학습 및 최적화

@@ -1,0 +1,230 @@
+{
+  "id": "wf_blog_generator_004",
+  "name": "Blog Post with Images",
+  "description": "주제를 입력받아 블로그 글과 관련 이미지를 자동으로 생성하는 워크플로우",
+  "version": "1.0.0",
+  "created_at": "2025-11-17T13:00:00Z",
+  "updated_at": "2025-11-17T13:00:00Z",
+  "user_id": "user_demo",
+  "nodes": [
+    {
+      "id": "node_input_topic",
+      "type": "utility.input",
+      "name": "Blog Topic",
+      "position": {
+        "x": 100,
+        "y": 300
+      },
+      "parameters": {
+        "input_type": "text",
+        "default_value": "The future of AI in healthcare"
+      },
+      "enabled": true,
+      "notes": "블로그 주제를 입력합니다"
+    },
+    {
+      "id": "node_llm_outline",
+      "type": "llm.inference",
+      "name": "Generate Outline",
+      "position": {
+        "x": 350,
+        "y": 300
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are a professional content writer. Create a detailed blog post outline with 5 main sections. For each section, provide a title and 2-3 key points to cover.",
+        "temperature": 0.8,
+        "max_tokens": 500,
+        "enable_cache": true
+      },
+      "enabled": true,
+      "notes": "블로그 개요를 생성합니다"
+    },
+    {
+      "id": "node_llm_write",
+      "type": "llm.inference",
+      "name": "Write Full Article",
+      "position": {
+        "x": 600,
+        "y": 300
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are a professional content writer. Write a comprehensive, well-structured blog post based on the given outline. Use engaging language, provide examples, and maintain a professional yet accessible tone. Aim for 1000-1500 words.",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "enable_cache": false
+      },
+      "enabled": true,
+      "notes": "개요를 바탕으로 전체 글을 작성합니다"
+    },
+    {
+      "id": "node_llm_image_prompts",
+      "type": "llm.inference",
+      "name": "Generate Image Prompts",
+      "position": {
+        "x": 850,
+        "y": 200
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are an expert at creating image generation prompts. Based on the blog post content, create 3 detailed image prompts for key sections. Each prompt should be vivid, specific, and suitable for DALL-E or Stable Diffusion. Return as JSON array.",
+        "temperature": 0.9,
+        "max_tokens": 400,
+        "enable_cache": false
+      },
+      "enabled": true,
+      "notes": "블로그 내용에 맞는 이미지 프롬프트를 생성합니다"
+    },
+    {
+      "id": "node_loop_images",
+      "type": "utility.loop",
+      "name": "Generate Multiple Images",
+      "position": {
+        "x": 1100,
+        "y": 200
+      },
+      "parameters": {
+        "max_iterations": 3
+      },
+      "enabled": true,
+      "notes": "각 이미지 프롬프트에 대해 이미지를 생성합니다"
+    },
+    {
+      "id": "node_image_gen",
+      "type": "image.generation",
+      "name": "Generate Image",
+      "position": {
+        "x": 1350,
+        "y": 200
+      },
+      "parameters": {
+        "model": "stable-diffusion-xl",
+        "width": 1024,
+        "height": 768,
+        "steps": 40,
+        "guidance_scale": 7.0,
+        "negative_prompt": "text, watermark, low quality"
+      },
+      "enabled": true,
+      "notes": "각 프롬프트로 이미지를 생성합니다"
+    },
+    {
+      "id": "node_storage_images",
+      "type": "resource.storage",
+      "name": "Save Images",
+      "position": {
+        "x": 1100,
+        "y": 400
+      },
+      "parameters": {
+        "storage_type": "gp_storage",
+        "tier": "hot",
+        "size_gb": 2
+      },
+      "enabled": true,
+      "notes": "생성된 이미지들을 저장합니다"
+    },
+    {
+      "id": "node_output_final",
+      "type": "utility.output",
+      "name": "Blog Post Package",
+      "position": {
+        "x": 1350,
+        "y": 400
+      },
+      "parameters": {
+        "output_format": "json",
+        "destination": null
+      },
+      "enabled": true,
+      "notes": "블로그 글과 이미지 URL을 함께 출력합니다"
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1",
+      "source_node_id": "node_input_topic",
+      "source_output": "data",
+      "target_node_id": "node_llm_outline",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_2",
+      "source_node_id": "node_llm_outline",
+      "source_output": "response",
+      "target_node_id": "node_llm_write",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_3",
+      "source_node_id": "node_llm_write",
+      "source_output": "response",
+      "target_node_id": "node_llm_image_prompts",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_4",
+      "source_node_id": "node_llm_image_prompts",
+      "source_output": "response",
+      "target_node_id": "node_loop_images",
+      "target_input": "items",
+      "enabled": true
+    },
+    {
+      "id": "conn_5",
+      "source_node_id": "node_loop_images",
+      "source_output": "item",
+      "target_node_id": "node_image_gen",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_6",
+      "source_node_id": "node_loop_images",
+      "source_output": "results",
+      "target_node_id": "node_storage_images",
+      "target_input": "data",
+      "enabled": true
+    },
+    {
+      "id": "conn_7",
+      "source_node_id": "node_storage_images",
+      "source_output": "storage_url",
+      "target_node_id": "node_output_final",
+      "target_input": "data",
+      "enabled": true
+    },
+    {
+      "id": "conn_8",
+      "source_node_id": "node_llm_write",
+      "source_output": "response",
+      "target_node_id": "node_output_final",
+      "target_input": "data",
+      "enabled": true
+    }
+  ],
+  "metadata": {
+    "tags": [
+      "content-creation",
+      "blog",
+      "writing",
+      "image-generation",
+      "automation"
+    ],
+    "category": "content_creation",
+    "is_public": true,
+    "fork_count": 342,
+    "execution_count": 1289
+  },
+  "settings": {
+    "timeout_seconds": 480,
+    "max_retries": 2,
+    "error_handling": "continue",
+    "parallel_execution": true,
+    "webhook_url": null
+  }
+}

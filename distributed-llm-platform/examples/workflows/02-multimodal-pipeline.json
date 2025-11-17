@@ -1,0 +1,199 @@
+{
+  "id": "wf_multimodal_002",
+  "name": "Multimodal Content Pipeline",
+  "description": "텍스트 프롬프트에서 이미지, 비디오, 음성까지 생성하는 멀티모달 콘텐츠 파이프라인",
+  "version": "1.0.0",
+  "created_at": "2025-11-17T11:00:00Z",
+  "updated_at": "2025-11-17T11:00:00Z",
+  "user_id": "user_demo",
+  "nodes": [
+    {
+      "id": "node_input_1",
+      "type": "utility.input",
+      "name": "Story Prompt",
+      "position": {
+        "x": 100,
+        "y": 300
+      },
+      "parameters": {
+        "input_type": "text",
+        "default_value": "A futuristic city with flying cars and neon lights at night"
+      },
+      "enabled": true,
+      "notes": "스토리 프롬프트를 입력받습니다"
+    },
+    {
+      "id": "node_llm_1",
+      "type": "llm.inference",
+      "name": "Generate Description",
+      "position": {
+        "x": 350,
+        "y": 300
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are a creative writer. Expand the given prompt into a detailed, vivid visual description suitable for image generation. Focus on visual details, lighting, atmosphere, and composition.",
+        "temperature": 0.9,
+        "max_tokens": 300,
+        "enable_cache": false
+      },
+      "enabled": true,
+      "notes": "간단한 프롬프트를 상세한 비주얼 설명으로 확장합니다"
+    },
+    {
+      "id": "node_image_1",
+      "type": "image.generation",
+      "name": "Generate Image",
+      "position": {
+        "x": 600,
+        "y": 200
+      },
+      "parameters": {
+        "model": "stable-diffusion-xl",
+        "width": 1024,
+        "height": 1024,
+        "steps": 50,
+        "guidance_scale": 7.5,
+        "negative_prompt": "blurry, low quality, distorted"
+      },
+      "enabled": true,
+      "notes": "확장된 설명을 바탕으로 이미지를 생성합니다"
+    },
+    {
+      "id": "node_video_1",
+      "type": "video.generation",
+      "name": "Generate Video",
+      "position": {
+        "x": 850,
+        "y": 200
+      },
+      "parameters": {
+        "model": "stable-video-diffusion",
+        "duration": 4,
+        "fps": 24,
+        "motion_scale": 1.2
+      },
+      "enabled": true,
+      "notes": "생성된 이미지를 기반으로 4초 비디오를 생성합니다"
+    },
+    {
+      "id": "node_audio_1",
+      "type": "audio.generation",
+      "name": "Generate Narration",
+      "position": {
+        "x": 600,
+        "y": 400
+      },
+      "parameters": {
+        "model": "xtts-v2",
+        "voice": "female-1",
+        "language": "en",
+        "speed": 1.0
+      },
+      "enabled": true,
+      "notes": "텍스트 설명을 음성 나레이션으로 변환합니다"
+    },
+    {
+      "id": "node_storage_1",
+      "type": "resource.storage",
+      "name": "Save Results",
+      "position": {
+        "x": 1100,
+        "y": 300
+      },
+      "parameters": {
+        "storage_type": "gp_storage",
+        "tier": "hot",
+        "size_gb": 5
+      },
+      "enabled": true,
+      "notes": "생성된 모든 미디어 파일을 스토리지에 저장합니다"
+    },
+    {
+      "id": "node_output_1",
+      "type": "utility.output",
+      "name": "Final Output",
+      "position": {
+        "x": 1350,
+        "y": 300
+      },
+      "parameters": {
+        "output_format": "json",
+        "destination": null
+      },
+      "enabled": true,
+      "notes": "모든 생성 결과의 URL을 JSON으로 출력합니다"
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1",
+      "source_node_id": "node_input_1",
+      "source_output": "data",
+      "target_node_id": "node_llm_1",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_2",
+      "source_node_id": "node_llm_1",
+      "source_output": "response",
+      "target_node_id": "node_image_1",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_3",
+      "source_node_id": "node_image_1",
+      "source_output": "image_data",
+      "target_node_id": "node_video_1",
+      "target_input": "init_image",
+      "enabled": true
+    },
+    {
+      "id": "conn_4",
+      "source_node_id": "node_llm_1",
+      "source_output": "response",
+      "target_node_id": "node_audio_1",
+      "target_input": "text",
+      "enabled": true
+    },
+    {
+      "id": "conn_5",
+      "source_node_id": "node_video_1",
+      "source_output": "video_data",
+      "target_node_id": "node_storage_1",
+      "target_input": "data",
+      "enabled": true
+    },
+    {
+      "id": "conn_6",
+      "source_node_id": "node_storage_1",
+      "source_output": "storage_url",
+      "target_node_id": "node_output_1",
+      "target_input": "data",
+      "enabled": true
+    }
+  ],
+  "metadata": {
+    "tags": [
+      "multimodal",
+      "content-generation",
+      "pipeline",
+      "image",
+      "video",
+      "audio"
+    ],
+    "category": "content_creation",
+    "is_public": true,
+    "fork_count": 156,
+    "execution_count": 523
+  },
+  "settings": {
+    "timeout_seconds": 600,
+    "max_retries": 2,
+    "error_handling": "continue",
+    "parallel_execution": true,
+    "webhook_url": null
+  }
+}

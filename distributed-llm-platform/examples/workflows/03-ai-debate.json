@@ -1,0 +1,194 @@
+{
+  "id": "wf_ai_debate_003",
+  "name": "AI Agent Debate",
+  "description": "여러 AI 에이전트가 특정 주제에 대해 토론하고 최선의 답을 도출하는 워크플로우",
+  "version": "1.0.0",
+  "created_at": "2025-11-17T12:00:00Z",
+  "updated_at": "2025-11-17T12:00:00Z",
+  "user_id": "user_demo",
+  "nodes": [
+    {
+      "id": "node_input_1",
+      "type": "utility.input",
+      "name": "Question",
+      "position": {
+        "x": 100,
+        "y": 300
+      },
+      "parameters": {
+        "input_type": "text",
+        "default_value": "What is the most effective way to address climate change?"
+      },
+      "enabled": true,
+      "notes": "토론할 주제를 입력합니다"
+    },
+    {
+      "id": "node_memory_1",
+      "type": "resource.memory",
+      "name": "Debate Memory",
+      "position": {
+        "x": 350,
+        "y": 200
+      },
+      "parameters": {
+        "memory_type": "context_memory",
+        "size_gb": 4.0,
+        "ttl_hours": 2
+      },
+      "enabled": true,
+      "notes": "토론 과정의 컨텍스트를 저장합니다"
+    },
+    {
+      "id": "node_agent_1",
+      "type": "agent.communication",
+      "name": "AI Debate",
+      "position": {
+        "x": 600,
+        "y": 300
+      },
+      "parameters": {
+        "agent_ids": [
+          "agent_optimist",
+          "agent_pessimist",
+          "agent_pragmatist"
+        ],
+        "protocol": "debate",
+        "timeout": 60
+      },
+      "enabled": true,
+      "notes": "3명의 에이전트(낙관론자, 비관론자, 실용주의자)가 토론합니다"
+    },
+    {
+      "id": "node_llm_summarize",
+      "type": "llm.inference",
+      "name": "Summarize Consensus",
+      "position": {
+        "x": 850,
+        "y": 300
+      },
+      "parameters": {
+        "model": "llama-3-70b",
+        "system_prompt": "You are an expert analyst. Summarize the key points from multiple AI agents' debate responses and extract a balanced consensus view. Include pros, cons, and actionable recommendations.",
+        "temperature": 0.5,
+        "max_tokens": 800,
+        "enable_cache": false
+      },
+      "enabled": true,
+      "notes": "토론 결과를 요약하고 합의점을 도출합니다"
+    },
+    {
+      "id": "node_condition_1",
+      "type": "utility.condition",
+      "name": "Check Consensus Quality",
+      "position": {
+        "x": 1100,
+        "y": 300
+      },
+      "parameters": {
+        "condition": "response.length > 200"
+      },
+      "enabled": true,
+      "notes": "합의 결과의 품질을 확인합니다"
+    },
+    {
+      "id": "node_output_success",
+      "type": "utility.output",
+      "name": "Final Answer",
+      "position": {
+        "x": 1350,
+        "y": 250
+      },
+      "parameters": {
+        "output_format": "json",
+        "destination": null
+      },
+      "enabled": true,
+      "notes": "합의 결과를 출력합니다"
+    },
+    {
+      "id": "node_output_retry",
+      "type": "utility.output",
+      "name": "Retry Needed",
+      "position": {
+        "x": 1350,
+        "y": 350
+      },
+      "parameters": {
+        "output_format": "json",
+        "destination": null
+      },
+      "enabled": true,
+      "notes": "재시도 필요 메시지를 출력합니다"
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1",
+      "source_node_id": "node_input_1",
+      "source_output": "data",
+      "target_node_id": "node_agent_1",
+      "target_input": "message",
+      "enabled": true
+    },
+    {
+      "id": "conn_2",
+      "source_node_id": "node_memory_1",
+      "source_output": "memory_id",
+      "target_node_id": "node_agent_1",
+      "target_input": "agent_context",
+      "enabled": true
+    },
+    {
+      "id": "conn_3",
+      "source_node_id": "node_agent_1",
+      "source_output": "responses",
+      "target_node_id": "node_llm_summarize",
+      "target_input": "prompt",
+      "enabled": true
+    },
+    {
+      "id": "conn_4",
+      "source_node_id": "node_llm_summarize",
+      "source_output": "response",
+      "target_node_id": "node_condition_1",
+      "target_input": "value",
+      "enabled": true
+    },
+    {
+      "id": "conn_5",
+      "source_node_id": "node_condition_1",
+      "source_output": "true",
+      "target_node_id": "node_output_success",
+      "target_input": "data",
+      "enabled": true
+    },
+    {
+      "id": "conn_6",
+      "source_node_id": "node_condition_1",
+      "source_output": "false",
+      "target_node_id": "node_output_retry",
+      "target_input": "data",
+      "enabled": true
+    }
+  ],
+  "metadata": {
+    "tags": [
+      "agent",
+      "debate",
+      "multi-agent",
+      "research",
+      "consensus"
+    ],
+    "category": "research",
+    "is_public": true,
+    "fork_count": 87,
+    "execution_count": 234
+  },
+  "settings": {
+    "timeout_seconds": 180,
+    "max_retries": 1,
+    "error_handling": "stop",
+    "parallel_execution": false,
+    "webhook_url": null
+  }
+}
