@@ -109,7 +109,7 @@ class TEEManager:
             )
 
             if result.returncode == 0:
-                # Check for H100/H200 with CC mode
+                # Check for Hopper (H100/H200) or Blackwell GPUs with CC mode
                 gpu_info = subprocess.run(
                     ["nvidia-smi", "--query-gpu=name",
                      "--format=csv,noheader"],
@@ -118,7 +118,14 @@ class TEEManager:
                     timeout=5
                 )
 
-                if "H100" in gpu_info.stdout or "H200" in gpu_info.stdout:
+                # Supported GPUs: Hopper (H100, H200) and Blackwell (B100, B200, RTX PRO 6000 Blackwell)
+                supported_gpus = [
+                    "H100", "H200",  # Hopper
+                    "B100", "B200", "Blackwell", "RTX PRO 6000"  # Blackwell
+                ]
+
+                gpu_name = gpu_info.stdout.strip()
+                if any(gpu in gpu_name for gpu in supported_gpus):
                     # Check for CC mode via device attributes
                     return self._check_nvidia_cc_mode()
 

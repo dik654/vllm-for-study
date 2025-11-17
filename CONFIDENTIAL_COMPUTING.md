@@ -8,7 +8,7 @@ vLLM Confidential Computing enables users to run private AI inference workloads 
 
 ### Key Features
 
-- 🔒 **Hardware-Enforced Security**: Uses Intel TDX, AMD SEV-SNP, and NVIDIA H100 Confidential GPU
+- 🔒 **Hardware-Enforced Security**: Uses Intel TDX, AMD SEV-SNP, and NVIDIA Confidential GPU (Hopper/Blackwell)
 - 🔐 **Encrypted Model Weights**: Envelope encryption with KMS integration
 - ✅ **Remote Attestation**: Cryptographic proof of TEE execution
 - 🚀 **Low Overhead**: 4-8% performance penalty on GPU TEE
@@ -43,7 +43,7 @@ vLLM Confidential Computing enables users to run private AI inference workloads 
 │  └─────────────────────────────┼────────────────────────┘  │
 │                                │                            │
 │  ┌─────────────────────────────┼────────────────────────┐  │
-│  │         GPU TEE (NVIDIA H100 Confidential)          │  │
+│  │   GPU TEE (NVIDIA Hopper/Blackwell Confidential)   │  │
 │  │                             │                        │  │
 │  │                             ▼                        │  │
 │  │                   ┌──────────────────┐              │  │
@@ -141,11 +141,29 @@ curl http://localhost:8000/v1/chat/completions \
 
 ## Supported TEE Platforms
 
-| Platform | CPU TEE | GPU TEE | Status |
-|----------|---------|---------|--------|
-| Intel TDX | ✅ Yes | ✅ Yes (with H100) | Supported |
-| AMD SEV-SNP | ✅ Yes | ✅ Yes (with H100) | Supported |
-| NVIDIA H100 CC | N/A | ✅ Yes | Supported |
+### CPU TEE Platforms
+
+| Platform | Architecture | Status |
+|----------|--------------|--------|
+| Intel TDX | Trust Domain Extensions | ✅ Supported |
+| AMD SEV-SNP | Secure Encrypted Virtualization | ✅ Supported |
+
+### GPU TEE Platforms
+
+| GPU Model | Architecture | Confidential Computing | Status |
+|-----------|--------------|------------------------|--------|
+| **Hopper GPUs** | | | |
+| H100 Tensor Core | Hopper | ✅ Yes | Supported |
+| H200 | Hopper | ✅ Yes | Supported |
+| **Blackwell GPUs** | | | |
+| B100 | Blackwell | ✅ Yes | Supported (2025) |
+| B200 | Blackwell | ✅ Yes | Supported (2025) |
+| RTX PRO 6000 Blackwell Server Edition | Blackwell | ✅ Yes | Supported (2025) |
+| **Ada Lovelace GPUs** | | | |
+| RTX 6000 Ada | Ada Lovelace | ❌ No | Not Supported |
+| L40 / L40S | Ada Lovelace | ❌ No | Not Supported |
+
+**Note**: Only **Hopper** and **Blackwell** architecture GPUs support Confidential Computing. Ada Lovelace GPUs (RTX 6000 Ada, L40, L40S) do **NOT** support Confidential Computing.
 
 ## KMS Providers
 

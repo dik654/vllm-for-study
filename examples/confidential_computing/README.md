@@ -32,7 +32,10 @@ python client_with_attestation.py
 ## Requirements
 
 - Python 3.8+
-- TEE-enabled hardware (Intel TDX, AMD SEV-SNP, or NVIDIA H100)
+- TEE-enabled hardware:
+  - **CPU TEE**: Intel TDX or AMD SEV-SNP
+  - **GPU TEE**: NVIDIA Hopper (H100/H200) or Blackwell (B100/B200/RTX PRO 6000 Blackwell)
+  - **Note**: Ada Lovelace GPUs (RTX 6000 Ada, L40/L40S) are NOT supported
 - vLLM with confidential computing support
 - KMS access (AWS KMS, Azure Key Vault, GCP KMS, or HashiCorp Vault)
 
