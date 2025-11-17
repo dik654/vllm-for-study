@@ -1,0 +1,31 @@
+# vLLM Confidential Computing Requirements
+#
+# Install with:
+#   pip install -r requirements-confidential.txt
+
+# Core cryptography
+cryptography>=41.0.0
+
+# KMS Providers (install only what you need)
+
+# AWS KMS
+boto3>=1.28.0  # Optional: only if using AWS KMS
+
+# Azure Key Vault
+azure-identity>=1.13.0  # Optional: only if using Azure Key Vault
+azure-keyvault-keys>=4.8.0  # Optional: only if using Azure Key Vault
+
+# GCP KMS
+google-cloud-kms>=2.19.0  # Optional: only if using GCP KMS
+
+# HashiCorp Vault
+hvac>=1.2.0  # Optional: only if using HashiCorp Vault
+
+# NVIDIA GPU Management (for Confidential GPU detection)
+pynvml>=11.5.0  # Optional: only if using NVIDIA H100 Confidential GPU
+
+# HTTP client for examples
+requests>=2.31.0
+
+# Note: vLLM base requirements are listed in the main requirements.txt
+# This file contains only additional dependencies for confidential computing features
