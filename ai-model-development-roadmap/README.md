@@ -5,7 +5,12 @@
 
 ## 🎉 새로운 소식!
 
-**🆕 최근 업데이트** (2024):
+**🆕 최근 업데이트** (2024-2025):
+- 🔥 **Phase 6: Current AI Trends**: 2024-2025 최신 트렌드 완전 정리
+  - 연구 트렌드 (o1, Sora, Mamba, World Models)
+  - Advanced Prompt Engineering (CoT, ToT, ReAct)
+  - LLMOps & Production (모니터링, 비용 최적화)
+- 📊 **Vector Databases & RAG**: Qdrant 내부 구조, HNSW, Quantization
 - ✨ **한글 주석 추가**: 모든 핵심 코드에 이해를 돕는 한글 설명 추가
 - 📘 **Vision Transformers**: ViT 완전 구현 가이드 추가
 - 🚀 **LoRA/QLoRA**: Efficient fine-tuning 상세 가이드
@@ -247,7 +252,58 @@ Pre-training과 Fine-tuning의 핵심을 이해합니다.
 
 ---
 
-### [Phase 6: 실전 프로젝트](./phase6-project/) (4주)
+### [Phase 6: Current AI Trends (2024-2025)](./phase6-current-trends/) (2주) ⭐ **최신 트렌드!**
+
+**"AI 기업으로서 최신 트렌드를 따라가기"**
+
+2024-2025년 AI 산업의 최신 트렌드와 실용 기술을 완전히 마스터합니다.
+
+#### 00: Research Fundamentals
+- ✅ **논문 읽기 배경지식**: Linear Algebra, Probability, Optimization, RL
+- ✅ **수식 이해**: Attention, Loss functions, Gradients
+- ✅ **3-Pass 읽기 전략**: 효율적인 논문 학습법
+- ✅ **수학 표기법**: 논문에서 자주 보는 notation
+
+#### 01: AI Landscape 2024-2025
+- ✅ **Top 10 Trends**: Multimodal AI, AI Agents, SLMs, Long Context, MoE
+- ✅ **산업별 활용**: Healthcare, Finance, Legal, Education, E-commerce
+- ✅ **모델 선택 전략**: 작업별 최적 모델 선택
+- ✅ **비용 최적화**: 70% 절감 전략
+- ✅ **LLMOps 기초**: Monitoring, Evaluation, Deployment
+
+#### 02: Cutting-Edge Research Trends
+- ✅ **Test-Time Compute Scaling**: OpenAI o1, o3 (추론 시간 확장)
+- ✅ **World Models**: Genie, GameNGen (환경 시뮬레이션)
+- ✅ **Diffusion Models 진화**: Sora, Stable Diffusion 3
+- ✅ **Efficient Architectures**: Mamba, RWKV (Transformer 대안)
+- ✅ **Constitutional AI / RLAIF**: AI가 AI를 안전하게
+- ✅ **Multi-Agent Systems 2.0**: MetaGPT, AgentVerse
+
+#### 03: Advanced Prompt Engineering
+- ✅ **고급 기법**: Chain-of-Thought, Tree of Thoughts, ReAct
+- ✅ **Self-Consistency**: 여러 경로 탐색 → 다수결
+- ✅ **Structured Output**: JSON, Function Calling
+- ✅ **Prompt Chaining**: 복잡한 작업 분해
+- ✅ **Compression**: LLMLingua로 40-60% 토큰 절감
+- ✅ **Evaluation**: A/B testing, LLM-as-a-judge
+
+#### 04: LLMOps & Production
+- ✅ **Architecture Patterns**: API Gateway, Router, Load Balancer
+- ✅ **Monitoring**: Logging, Metrics (Prometheus), Alerts
+- ✅ **Cost Optimization**: Semantic caching, Batch processing
+- ✅ **Quality Assurance**: Automated testing, LLM-as-a-judge
+- ✅ **Scaling**: Autoscaling, Multi-region deployment
+- ✅ **Security**: Rate limiting, Input validation, PII detection
+
+**학습 후 달성 목표**:
+- ✅ 최신 연구 트렌드 이해 및 논문 읽기
+- ✅ 프롬프트 엔지니어링 마스터 (50%+ 성능 향상)
+- ✅ 프로덕션 LLM 시스템 구축 (99.9% 가용성)
+- ✅ AI 아티클 작성 능력
+
+---
+
+### [Phase 7: 실전 프로젝트](./phase7-project/) (4주)
 모든 학습 내용을 종합하여 자신만의 모델을 설계합니다.
 
 #### Week 13-14: 설계
