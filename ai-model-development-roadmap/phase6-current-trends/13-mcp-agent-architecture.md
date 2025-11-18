@@ -6338,72 +6338,254 @@ class VisionInspectionMCP(Server):
 
     async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
         if name == "detect_defects":
+            from anthropic import Anthropic
+            import base64
+
             image_path = arguments['image_path']
+            product_type = arguments.get('product_type', 'UNKNOWN')
 
             # Vision AI로 결함 탐지
             with open(image_path, 'rb') as f:
                 image_data = base64.b64encode(f.read()).decode('utf-8')
 
-            prompt = """
-            이 전자부품 이미지를 분석하여 결함을 찾아주세요:
+            llm_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-            검사 항목:
-            1. 표면 스크래치
-            2. 변색
-            3. 찌그러짐
-            4. 이물질 부착
-            5. 치수 이상
-            6. 납땜 불량
+            message = llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}
+                        },
+                        {
+                            "type": "text",
+                            "text": f"""이 {product_type} 전자부품 이미지를 정밀 분석하여 결함을 찾아주세요:
 
-            JSON 응답:
-            {
-              "has_defect": true/false,
-              "defects": [
-                {
-                  "type": "결함 유형",
-                  "severity": "CRITICAL/MAJOR/MINOR",
-                  "location": {"x": 0, "y": 0, "w": 0, "h": 0},
-                  "confidence": 0.0-1.0
-                }
-              ],
-              "quality_grade": "A/B/C/D/F"
-            }
-            """
+검사 항목:
+1. 표면 스크래치 (긁힘, 찍힘)
+2. 변색 (산화, 부식)
+3. 찌그러짐 (변형)
+4. 이물질 부착 (먼지, 오염)
+5. 치수 이상 (크기 불일치)
+6. 납땜 불량 (cold joint, bridge)
+7. 부품 누락 또는 잘못된 배치
+8. 크랙 (균열)
 
-            # Multimodal LLM 호출
-            return [TextContent(type="text", text="...")]
+각 결함에 대해 위치, 심각도, 신뢰도를 포함하여 JSON으로 응답해주세요:
+{{
+  "has_defect": true/false,
+  "defects": [
+    {{
+      "type": "결함 유형",
+      "severity": "CRITICAL/MAJOR/MINOR",
+      "location": {{"x": 픽셀, "y": 픽셀, "w": 너비, "h": 높이}},
+      "confidence": 0.0-1.0,
+      "description": "구체적 설명"
+    }}
+  ],
+  "quality_grade": "A/B/C/D/F",
+  "recommendation": "PASS/REWORK/SCRAP"
+}}"""
+                        }
+                    ]
+                }]
+            )
+
+            result = message.content[0].text
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "product_id": os.path.basename(image_path).split('.')[0],
+                    "analysis": result
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "classify_defect_type":
+            from anthropic import Anthropic
+            import base64
+
+            defect_image = arguments['defect_image']
+
+            with open(defect_image, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            llm_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+            message = llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=512,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}
+                        },
+                        {
+                            "type": "text",
+                            "text": "이 불량 이미지의 불량 유형과 가능한 원인을 분석해주세요. (스크래치/납땜불량/변색/치수이상/기타)"
+                        }
+                    ]
+                }]
+            )
+
+            return [TextContent(type="text", text=message.content[0].text)]
 
 
 # 2. Manufacturing MES MCP
 class ManufacturingMESMCP(Server):
     """제조 실행 시스템 연동"""
 
+    def __init__(self):
+        super().__init__("manufacturing-mes")
+        self.db_pool = None
+
     async def list_tools(self) -> List[Tool]:
         return [
             Tool(
                 name="log_inspection_result",
-                description="검사 결과 MES에 기록",
+                description="검사 결과를 MES 데이터베이스에 기록",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "product_id": {"type": "string"},
                         "inspection_result": {"type": "object"},
-                        "action": {"type": "string", "enum": ["PASS", "REWORK", "SCRAP"]}
-                    }
+                        "action": {"type": "string", "enum": ["PASS", "REWORK", "SCRAP"]},
+                        "timestamp": {"type": "string"}
+                    },
+                    "required": ["product_id", "inspection_result", "action"]
+                }
+            ),
+            Tool(
+                name="get_defect_statistics",
+                description="불량 통계 조회 (일자별/유형별)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "start_date": {"type": "string"},
+                        "end_date": {"type": "string"},
+                        "product_line": {"type": "string"}
+                    },
+                    "required": ["start_date", "end_date"]
                 }
             ),
             Tool(
                 name="generate_quality_report",
-                description="품질 리포트 생성",
+                description="품질 관리 리포트 생성 (PDF)",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "date": {"type": "string"},
                         "product_line": {"type": "string"}
-                    }
+                    },
+                    "required": ["date"]
                 }
             )
         ]
+
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "log_inspection_result":
+            import asyncpg
+
+            product_id = arguments['product_id']
+            inspection_result = arguments['inspection_result']
+            action = arguments['action']
+            timestamp = arguments.get('timestamp', datetime.now().isoformat())
+
+            if not self.db_pool:
+                self.db_pool = await asyncpg.create_pool(
+                    host=os.getenv("MES_DB_HOST"),
+                    database="manufacturing_db"
+                )
+
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO inspection_results (product_id, result, action, timestamp)
+                    VALUES ($1, $2, $3, $4)
+                """, product_id, json.dumps(inspection_result), action, timestamp)
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "product_id": product_id,
+                    "action": action,
+                    "message": "검사 결과 기록 완료"
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "get_defect_statistics":
+            start_date = arguments['start_date']
+            end_date = arguments['end_date']
+
+            async with self.db_pool.acquire() as conn:
+                stats = await conn.fetch("""
+                    SELECT
+                        action,
+                        COUNT(*) as count,
+                        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as percentage
+                    FROM inspection_results
+                    WHERE timestamp BETWEEN $1 AND $2
+                    GROUP BY action
+                """, start_date, end_date)
+
+                defect_types = await conn.fetch("""
+                    SELECT
+                        result->>'type' as defect_type,
+                        COUNT(*) as count
+                    FROM inspection_results
+                    WHERE action IN ('REWORK', 'SCRAP')
+                        AND timestamp BETWEEN $1 AND $2
+                    GROUP BY result->>'type'
+                    ORDER BY count DESC
+                """, start_date, end_date)
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "period": f"{start_date} ~ {end_date}",
+                    "action_summary": [dict(row) for row in stats],
+                    "defect_types": [dict(row) for row in defect_types]
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "generate_quality_report":
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+
+            date = arguments['date']
+            product_line = arguments.get('product_line', 'ALL')
+
+            # 통계 조회
+            stats_result = await self.call_tool("get_defect_statistics", {
+                "start_date": f"{date} 00:00:00",
+                "end_date": f"{date} 23:59:59"
+            })
+
+            stats = json.loads(stats_result[0].text)
+
+            # PDF 생성
+            pdf_path = f"/tmp/quality_report_{date}.pdf"
+            c = canvas.Canvas(pdf_path, pagesize=A4)
+            c.drawString(100, 800, f"품질 검사 리포트 - {date}")
+            c.drawString(100, 770, f"생산 라인: {product_line}")
+            # ... (상세 리포트 내용)
+            c.save()
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "pdf_path": pdf_path,
+                    "statistics": stats
+                }, ensure_ascii=False)
+            )]
 ```
 
 ### Agent 실행 시퀀스 (요약)
@@ -6441,6 +6623,28 @@ ROI:
 - 불량 탐지율: 육안 90% → Vision AI 98.5%
 - 연간 불량 손실 감소: 3억원 → 3천만원 (90% 감소)
 ```
+
+### ROI 분석 (간략)
+
+**Before (수동 검사)**:
+- 검사 인력: 2명 × 4시간 = 8시간
+- 시간당 인건비: 30,000원
+- 하루 비용: 240,000원
+- 연간 비용: 240,000원 × 250일 = 60,000,000원
+- 불량 탐지율: 90% (피로도로 인한 누락)
+- 검사 일관성: 85% (검사자마다 기준 상이)
+
+**After (Vision AI)**:
+- 처리 시간: 100초 (1.7분)
+- API 비용: 5,000개 × $0.008 = $40 ≈ 53,000원/일
+- 연간 비용: 53,000원 × 250일 = 13,250,000원
+- 불량 탐지율: 98.5%
+- 검사 일관성: 99.2%
+
+**절감 효과**:
+- 비용: 60,000,000원 → 13,250,000원 (**78% 절감**)
+- 시간: 8시간 → 1.7분 (**99.6% 단축**)
+- 품질: 불량품 시장 유출 90% 감소 → **연간 손실 2.7억원 절감**
 
 ---
 
@@ -6558,6 +6762,26 @@ ROI:
 - 약사 업무 효율: +40%
 - 환자 안전: 크게 향상
 ```
+
+### ROI 분석 (간략)
+
+**Before (수동 처리)**:
+- 처방전 입력: 약사 3분/건
+- 약물 상호작용 체크: 수동으로 약물 DB 조회 (불완전)
+- 의료 사고 위험: 연간 2-3건 발생 가능
+- 일일 처리량: 200건 × 3분 = 10시간
+
+**After (AI + OCR)**:
+- 처방전 OCR: 5초/건 (Vision AI)
+- 약물 상호작용: 실시간 자동 체크 (100% 커버)
+- 의료 사고 방지: 99.9% 감소
+- 일일 처리량: 200건 × 5초 = 16.7분
+
+**절감 효과**:
+- 시간: 10시간 → 17분 (**97.2% 단축**)
+- 약사 업무 효율: 40% 향상 (본질적 업무에 집중 가능)
+- 의료 사고 비용 절감: 연간 5억원 (소송, 배상 등)
+- 환자 안전 및 병원 신뢰도: 크게 향상
 
 ---
 
