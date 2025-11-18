@@ -4954,148 +4954,1336 @@ After (AI Agent + LLM):
 ```python
 # 1. Exam Grading OCR MCP
 class ExamGradingOCRMCP(Server):
-    """시험지 OCR + 자동 채점"""
+    """시험지 OCR + 자동 채점 (Vision AI)"""
+
+    def __init__(self):
+        super().__init__("exam-grading-ocr")
+        from anthropic import Anthropic
+        self.llm_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
     async def list_tools(self) -> List[Tool]:
         return [
             Tool(
                 name="scan_exam_paper",
-                description="시험지 스캔 (학생 답안 OCR)",
+                description="시험지 이미지에서 학생 정보 및 답안 추출 (Vision AI + OCR)",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "image_path": {"type": "string"},
-                        "exam_type": {"type": "string", "enum": ["MULTIPLE_CHOICE", "SHORT_ANSWER", "ESSAY"]}
-                    }
+                        "image_path": {"type": "string", "description": "시험지 스캔 이미지 경로"},
+                        "exam_id": {"type": "string", "description": "시험 ID"},
+                        "exam_type": {"type": "string", "enum": ["MULTIPLE_CHOICE", "SHORT_ANSWER", "ESSAY", "MIXED"]}
+                    },
+                    "required": ["image_path", "exam_id"]
                 }
             ),
             Tool(
                 name="grade_math_answer",
-                description="수학 답안 채점 (Vision AI + 수식 인식)",
+                description="수학 주관식 답안 자동 채점 (Vision AI + 수식 인식)",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "student_answer": {"type": "string"},
-                        "correct_answer": {"type": "string"},
-                        "question_type": {"type": "string"},
-                        "partial_credit": {"type": "boolean"}
-                    }
+                        "question_id": {"type": "string"},
+                        "student_answer": {"type": "string", "description": "학생이 작성한 답안 (OCR 결과)"},
+                        "student_answer_image": {"type": "string", "description": "답안 이미지 경로 (필기 확인용)"},
+                        "correct_answer": {"type": "string", "description": "모범 답안"},
+                        "rubric": {"type": "object", "description": "채점 기준"},
+                        "max_score": {"type": "number"}
+                    },
+                    "required": ["question_id", "student_answer", "correct_answer", "rubric", "max_score"]
                 }
             ),
             Tool(
-                name="analyze_handwriting",
-                description="필기체 인식 (학생 이름, 답안)",
+                name="grade_multiple_choice",
+                description="객관식 답안 자동 채점 (OMR 인식)",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "image_region": {"type": "object"}
-                    }
+                        "student_answers": {"type": "object", "description": "학생 답안 {문제번호: 답}"},
+                        "answer_key": {"type": "object", "description": "정답 {문제번호: 답}"},
+                        "score_per_question": {"type": "number"}
+                    },
+                    "required": ["student_answers", "answer_key"]
+                }
+            ),
+            Tool(
+                name="analyze_handwriting_clarity",
+                description="필기체 명확도 분석 (Vision AI)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "image_path": {"type": "string"}
+                    },
+                    "required": ["image_path"]
                 }
             )
         ]
 
     async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
-        if name == "grade_math_answer":
+        if name == "scan_exam_paper":
+            import base64
+            from PIL import Image
+
+            image_path = arguments['image_path']
+            exam_id = arguments['exam_id']
+
+            # 이미지 로드 및 Base64 인코딩
+            with open(image_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            # Vision AI로 시험지 분석
+            message = self.llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=2048,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_data
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": """이 시험지 이미지를 분석해주세요:
+
+1. 학생 정보 추출:
+   - 학생 이름 (필기체 인식)
+   - 학번
+   - 반/번호
+
+2. 객관식 답안 (OMR 마킹 인식):
+   - 각 문제번호와 선택한 답 (①②③④⑤)
+   - 답안이 명확하지 않은 경우 'UNCLEAR' 표시
+
+3. 주관식 답안 (텍스트 OCR):
+   - 각 문제번호별로 학생이 작성한 답안
+   - 수식도 텍스트로 변환 (예: x^2 + 3x + 2 = 0)
+
+JSON 형식으로 응답:
+{
+  "student_info": {
+    "name": "학생이름",
+    "student_id": "학번",
+    "class": "반",
+    "number": "번호"
+  },
+  "multiple_choice": {
+    "1": "③",
+    "2": "①",
+    ...
+  },
+  "short_answer": {
+    "31": "x = -2 또는 x = -1",
+    "32": "12cm²",
+    ...
+  }
+}"""
+                        }
+                    ]
+                }]
+            )
+
+            ocr_result = message.content[0].text
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "exam_id": exam_id,
+                    "image_path": image_path,
+                    "ocr_result": ocr_result
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "grade_math_answer":
+            question_id = arguments['question_id']
             student_ans = arguments['student_answer']
             correct_ans = arguments['correct_answer']
+            rubric = arguments['rubric']
+            max_score = arguments['max_score']
 
-            # Multimodal LLM으로 수학 답안 평가
-            prompt = f"""
-            수학 문제 채점:
+            # Vision AI로 필기 이미지도 함께 분석 (선택적)
+            prompt = f"""수학 주관식 문제 채점:
 
-            정답: {correct_ans}
-            학생 답안: {student_ans}
+**정답**: {correct_ans}
+**학생 답안**: {student_ans}
+**배점**: {max_score}점
+**채점 기준**:
+{json.dumps(rubric, ensure_ascii=False, indent=2)}
 
-            다음을 평가해주세요:
-            1. 답이 정확한가?
-            2. 풀이 과정이 올바른가?
-            3. 부분 점수 부여 가능한가?
+다음을 평가해주세요:
+1. 최종 답이 정확한가?
+2. 풀이 과정이 논리적이고 올바른가?
+3. 부분 점수를 부여할 수 있는가?
 
-            JSON 응답:
-            {{
-              "is_correct": true/false,
-              "score": 0-10,
-              "feedback": "채점 피드백",
-              "mistakes": ["실수한 부분"]
-            }}
-            """
+채점 기준에 따라 점수를 부여하고, 구체적인 피드백을 제공해주세요.
 
-            # LLM 호출
-            return [TextContent(type="text", text="...")]
+JSON 응답:
+{{
+  "is_correct": true/false,
+  "score": 0-{max_score},
+  "partial_credit": true/false,
+  "evaluation": {{
+    "answer_correctness": "최종 답 평가",
+    "process_correctness": "풀이 과정 평가",
+    "mistakes": ["실수한 부분들"]
+  }},
+  "feedback": "학생에게 제공할 피드백",
+  "teacher_note": "교사용 참고사항"
+}}"""
+
+            message = self.llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            grading_result = message.content[0].text
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "question_id": question_id,
+                    "grading": grading_result
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "grade_multiple_choice":
+            student_answers = arguments['student_answers']
+            answer_key = arguments['answer_key']
+            score_per_q = arguments.get('score_per_question', 2)
+
+            correct_count = 0
+            incorrect_questions = []
+
+            for q_num, correct_ans in answer_key.items():
+                student_ans = student_answers.get(q_num, "NO_ANSWER")
+
+                if student_ans == correct_ans:
+                    correct_count += 1
+                else:
+                    incorrect_questions.append({
+                        "question": q_num,
+                        "student_answer": student_ans,
+                        "correct_answer": correct_ans
+                    })
+
+            total_score = correct_count * score_per_q
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "total_questions": len(answer_key),
+                    "correct_count": correct_count,
+                    "incorrect_count": len(incorrect_questions),
+                    "score": total_score,
+                    "max_score": len(answer_key) * score_per_q,
+                    "accuracy": f"{correct_count / len(answer_key) * 100:.1f}%",
+                    "incorrect_questions": incorrect_questions
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "analyze_handwriting_clarity":
+            import base64
+
+            image_path = arguments['image_path']
+
+            with open(image_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            message = self.llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=512,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}
+                        },
+                        {
+                            "type": "text",
+                            "text": "이 필기의 명확도를 평가해주세요 (1-10점). 글씨가 읽기 쉬운지, 정돈되어 있는지 평가해주세요."
+                        }
+                    ]
+                }]
+            )
+
+            return [TextContent(type="text", text=message.content[0].text)]
 
 
 # 2. Learning Analytics MCP
 class LearningAnalyticsMCP(Server):
-    """학습 분석 + 리포트"""
+    """학습 분석 및 맞춤형 리포트 생성"""
+
+    def __init__(self):
+        super().__init__("learning-analytics")
+        import asyncpg
+        self.db_pool = None
 
     async def list_tools(self) -> List[Tool]:
         return [
             Tool(
+                name="save_exam_result",
+                description="시험 결과를 데이터베이스에 저장",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "exam_id": {"type": "string"},
+                        "student_id": {"type": "string"},
+                        "scores": {"type": "object", "description": "문제별 점수"},
+                        "total_score": {"type": "number"},
+                        "graded_at": {"type": "string", "format": "date-time"}
+                    },
+                    "required": ["exam_id", "student_id", "scores", "total_score"]
+                }
+            ),
+            Tool(
                 name="analyze_weak_areas",
-                description="학생별 취약 영역 분석",
+                description="학생별 취약 영역 분석 (과거 성적 기반)",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "student_id": {"type": "string"},
-                        "exam_results": {"type": "array"}
-                    }
+                        "exam_id": {"type": "string"},
+                        "subject": {"type": "string"}
+                    },
+                    "required": ["student_id", "exam_id"]
+                }
+            ),
+            Tool(
+                name="analyze_class_performance",
+                description="반 전체 성적 통계 분석",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "exam_id": {"type": "string"},
+                        "class_id": {"type": "string"}
+                    },
+                    "required": ["exam_id"]
+                }
+            ),
+            Tool(
+                name="analyze_question_difficulty",
+                description="문항별 난이도 분석 (정답률 기반)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "exam_id": {"type": "string"}
+                    },
+                    "required": ["exam_id"]
                 }
             ),
             Tool(
                 name="generate_study_plan",
-                description="맞춤 학습 계획 생성",
+                description="학생별 맞춤 학습 계획 생성 (AI 기반)",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "student_id": {"type": "string"},
-                        "weak_areas": {"type": "array"}
-                    }
+                        "weak_areas": {"type": "array"},
+                        "target_improvement": {"type": "number", "description": "목표 점수 향상치"}
+                    },
+                    "required": ["student_id", "weak_areas"]
+                }
+            ),
+            Tool(
+                name="generate_parent_report",
+                description="학부모용 성적 리포트 생성 (PDF)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "student_id": {"type": "string"},
+                        "exam_id": {"type": "string"}
+                    },
+                    "required": ["student_id", "exam_id"]
                 }
             )
         ]
+
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "save_exam_result":
+            exam_id = arguments['exam_id']
+            student_id = arguments['student_id']
+            scores = arguments['scores']
+            total_score = arguments['total_score']
+            graded_at = arguments.get('graded_at', datetime.now().isoformat())
+
+            # PostgreSQL에 저장
+            if not self.db_pool:
+                import asyncpg
+                self.db_pool = await asyncpg.create_pool(
+                    host=os.getenv("DB_HOST", "localhost"),
+                    database="education_db",
+                    user=os.getenv("DB_USER"),
+                    password=os.getenv("DB_PASSWORD")
+                )
+
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO exam_results (exam_id, student_id, scores, total_score, graded_at)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (exam_id, student_id) DO UPDATE
+                    SET scores = EXCLUDED.scores,
+                        total_score = EXCLUDED.total_score,
+                        graded_at = EXCLUDED.graded_at
+                """, exam_id, student_id, json.dumps(scores), total_score, graded_at)
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "message": f"학생 {student_id}의 시험 결과 저장 완료"
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "analyze_weak_areas":
+            student_id = arguments['student_id']
+            exam_id = arguments['exam_id']
+
+            # 해당 학생의 과거 시험 결과 조회
+            async with self.db_pool.acquire() as conn:
+                # 최근 3개 시험 결과
+                past_results = await conn.fetch("""
+                    SELECT exam_id, scores, total_score
+                    FROM exam_results
+                    WHERE student_id = $1
+                    ORDER BY graded_at DESC
+                    LIMIT 3
+                """, student_id)
+
+                # 각 문제 영역별 정답률 계산
+                # (문제 메타데이터에서 각 문제가 어떤 영역에 속하는지 확인)
+                area_scores = {}
+                for result in past_results:
+                    scores_dict = json.loads(result['scores'])
+                    for q_id, score in scores_dict.items():
+                        # 문제 영역 조회 (예: 1-10번은 방정식, 11-20번은 함수 등)
+                        area = await self._get_question_area(conn, q_id)
+
+                        if area not in area_scores:
+                            area_scores[area] = {"correct": 0, "total": 0}
+
+                        area_scores[area]["total"] += 1
+                        if score > 0:
+                            area_scores[area]["correct"] += 1
+
+            # 정답률 계산 및 취약 영역 판정
+            weak_areas = []
+            strong_areas = []
+
+            for area, stats in area_scores.items():
+                accuracy = stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0
+
+                area_info = {
+                    "area": area,
+                    "accuracy": f"{accuracy:.1f}%",
+                    "correct": stats["correct"],
+                    "total": stats["total"]
+                }
+
+                if accuracy < 60:
+                    weak_areas.append(area_info)
+                elif accuracy >= 80:
+                    strong_areas.append(area_info)
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "student_id": student_id,
+                    "weak_areas": weak_areas,
+                    "strong_areas": strong_areas,
+                    "recommendation": "취약 영역 집중 보완이 필요합니다." if weak_areas else "전반적으로 우수합니다."
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "analyze_class_performance":
+            exam_id = arguments['exam_id']
+
+            async with self.db_pool.acquire() as conn:
+                stats = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) as student_count,
+                        AVG(total_score) as avg_score,
+                        MAX(total_score) as max_score,
+                        MIN(total_score) as min_score,
+                        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_score) as median_score
+                    FROM exam_results
+                    WHERE exam_id = $1
+                """, exam_id)
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "exam_id": exam_id,
+                    "statistics": {
+                        "student_count": stats['student_count'],
+                        "average": round(stats['avg_score'], 2),
+                        "median": round(stats['median_score'], 2),
+                        "max": stats['max_score'],
+                        "min": stats['min_score'],
+                        "range": stats['max_score'] - stats['min_score']
+                    }
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "analyze_question_difficulty":
+            exam_id = arguments['exam_id']
+
+            async with self.db_pool.acquire() as conn:
+                # 각 문제별 정답률 계산
+                results = await conn.fetch("""
+                    SELECT scores
+                    FROM exam_results
+                    WHERE exam_id = $1
+                """, exam_id)
+
+            question_stats = {}
+            for result in results:
+                scores_dict = json.loads(result['scores'])
+                for q_id, score in scores_dict.items():
+                    if q_id not in question_stats:
+                        question_stats[q_id] = {"correct": 0, "total": 0}
+
+                    question_stats[q_id]["total"] += 1
+                    if score > 0:
+                        question_stats[q_id]["correct"] += 1
+
+            # 정답률 기준으로 난이도 분류
+            easy_questions = []
+            medium_questions = []
+            hard_questions = []
+
+            for q_id, stats in question_stats.items():
+                accuracy = stats["correct"] / stats["total"] * 100
+
+                q_info = {
+                    "question_id": q_id,
+                    "accuracy": f"{accuracy:.1f}%",
+                    "correct_count": stats["correct"],
+                    "total_count": stats["total"]
+                }
+
+                if accuracy >= 75:
+                    easy_questions.append(q_info)
+                elif accuracy >= 40:
+                    medium_questions.append(q_info)
+                else:
+                    hard_questions.append(q_info)
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "exam_id": exam_id,
+                    "difficulty_analysis": {
+                        "easy": easy_questions,
+                        "medium": medium_questions,
+                        "hard": hard_questions
+                    },
+                    "summary": f"쉬운 문제: {len(easy_questions)}개, 중간: {len(medium_questions)}개, 어려운 문제: {len(hard_questions)}개"
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "generate_study_plan":
+            from anthropic import Anthropic
+
+            student_id = arguments['student_id']
+            weak_areas = arguments['weak_areas']
+            target = arguments.get('target_improvement', 15)
+
+            llm_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+            prompt = f"""학생 {student_id}의 맞춤형 학습 계획을 생성해주세요.
+
+**취약 영역**: {json.dumps(weak_areas, ensure_ascii=False)}
+**목표**: {target}점 향상
+
+다음을 포함한 2주 학습 계획을 작성해주세요:
+1. 주차별 학습 목표
+2. 일일 학습 내용 (영역별 우선순위)
+3. 추천 문제 유형
+4. 복습 계획
+
+마크다운 형식으로 작성해주세요."""
+
+            message = llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            study_plan = message.content[0].text
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "student_id": student_id,
+                    "study_plan": study_plan
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "generate_parent_report":
+            student_id = arguments['student_id']
+            exam_id = arguments['exam_id']
+
+            # 성적 정보 조회
+            async with self.db_pool.acquire() as conn:
+                result = await conn.fetchrow("""
+                    SELECT total_score, scores, graded_at
+                    FROM exam_results
+                    WHERE exam_id = $1 AND student_id = $2
+                """, exam_id, student_id)
+
+                student_info = await conn.fetchrow("""
+                    SELECT name, class, number
+                    FROM students
+                    WHERE student_id = $1
+                """, student_id)
+
+            # PDF 생성
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+
+            pdf_path = f"/tmp/report_{student_id}_{exam_id}.pdf"
+            c = canvas.Canvas(pdf_path, pagesize=A4)
+
+            # 한글 폰트 설정 (나눔고딕)
+            pdfmetrics.registerFont(TTFont('NanumGothic', '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
+            c.setFont('NanumGothic', 16)
+
+            c.drawString(100, 800, f"성적 리포트 - {student_info['name']} 학생")
+            c.setFont('NanumGothic', 12)
+            c.drawString(100, 770, f"학번: {student_id} | 반: {student_info['class']} | 번호: {student_info['number']}")
+            c.drawString(100, 750, f"시험 ID: {exam_id}")
+            c.drawString(100, 730, f"총점: {result['total_score']}점")
+
+            c.save()
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "pdf_path": pdf_path,
+                    "message": "학부모용 리포트 생성 완료"
+                }, ensure_ascii=False)
+            )]
+
+    async def _get_question_area(self, conn, question_id: str) -> str:
+        """문제 ID로부터 영역 조회 (예: 방정식, 함수, 도형 등)"""
+        result = await conn.fetchrow("""
+            SELECT area FROM question_metadata WHERE question_id = $1
+        """, question_id)
+        return result['area'] if result else "기타"
+
+
+# 3. Student Database MCP
+class StudentDatabaseMCP(Server):
+    """학생 정보 조회"""
+
+    def __init__(self):
+        super().__init__("student-db")
+        self.db_pool = None
+
+    async def list_tools(self) -> List[Tool]:
+        return [
+            Tool(
+                name="get_student_info",
+                description="학생 기본 정보 조회",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "student_id": {"type": "string"}
+                    },
+                    "required": ["student_id"]
+                }
+            ),
+            Tool(
+                name="list_exam_papers",
+                description="채점 대기 중인 시험지 목록",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "exam_id": {"type": "string"},
+                        "status": {"type": "string", "enum": ["PENDING", "GRADED"]}
+                    },
+                    "required": ["exam_id"]
+                }
+            )
+        ]
+
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "get_student_info":
+            student_id = arguments['student_id']
+
+            if not self.db_pool:
+                import asyncpg
+                self.db_pool = await asyncpg.create_pool(
+                    host=os.getenv("DB_HOST", "localhost"),
+                    database="education_db"
+                )
+
+            async with self.db_pool.acquire() as conn:
+                student = await conn.fetchrow("""
+                    SELECT name, class, number, parent_email
+                    FROM students
+                    WHERE student_id = $1
+                """, student_id)
+
+            if student:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "success": True,
+                        "student_id": student_id,
+                        "name": student['name'],
+                        "class": student['class'],
+                        "number": student['number'],
+                        "parent_email": student['parent_email']
+                    }, ensure_ascii=False)
+                )]
+            else:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"success": False, "error": "학생 정보를 찾을 수 없습니다."}, ensure_ascii=False)
+                )]
+
+        elif name == "list_exam_papers":
+            exam_id = arguments['exam_id']
+            status = arguments.get('status', 'PENDING')
+
+            async with self.db_pool.acquire() as conn:
+                papers = await conn.fetch("""
+                    SELECT paper_id, student_id, image_path, uploaded_at
+                    FROM exam_papers
+                    WHERE exam_id = $1 AND status = $2
+                    ORDER BY uploaded_at
+                """, exam_id, status)
+
+            paper_list = [
+                {
+                    "paper_id": p['paper_id'],
+                    "student_id": p['student_id'],
+                    "image_path": p['image_path'],
+                    "uploaded_at": p['uploaded_at'].isoformat()
+                }
+                for p in papers
+            ]
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "exam_id": exam_id,
+                    "status": status,
+                    "count": len(paper_list),
+                    "papers": paper_list
+                }, ensure_ascii=False)
+            )]
 ```
 
-### Agent 실행 시퀀스 (요약)
+### Agent 실행 시퀀스 (상세)
 
 ```
 사용자: "중간고사 수학 시험지 150장을 스캔해서 자동 채점하고, 학생별 취약 영역 분석해줘"
 
-STEP 1: 시험지 150장 OCR 처리
-  → 학생 이름, 학번 인식 (필기체)
-  → 각 문제별 답안 추출 (객관식 + 주관식)
+Agent 생각:
+"시험지 자동 채점 요청입니다. 먼저 채점 대기 중인 시험지 목록을 확인하고,
+각 시험지를 OCR로 처리한 후, 객관식과 주관식을 각각 채점해야 합니다.
+그 다음 학생별로 취약 영역을 분석하고 맞춤 학습 계획을 생성해야 합니다.
+Vision AI를 활용해 필기체 인식과 수식 평가를 수행하겠습니다."
 
-STEP 2: 자동 채점 (Vision AI)
-  - 객관식 30문제: OMR 자동 인식
-  - 서술형 10문제: LLM 기반 채점
-    * 수식 인식
-    * 풀이 과정 평가
-    * 부분 점수 자동 부여
+────────────────────────────────────────────────────────────────
 
-STEP 3: 학생별 성적 집계
-  - 평균: 73.5점
-  - 최고점: 98점
-  - 최저점: 42점
+STEP 1: 채점 대기 중인 시험지 목록 조회
 
-STEP 4: 문항별 정답률 분석
-  - 17번 문제: 정답률 23% (가장 어려움)
-  - 5번 문제: 정답률 94% (가장 쉬움)
+Request: student_db.list_exam_papers(
+  exam_id="2024-MATH-MIDTERM-01",
+  status="PENDING"
+)
 
-STEP 5: 학생별 취약 영역 분석 (150명)
-  예: 김철수 학생
-    - 약한 영역: 이차함수 (40%), 확률 (55%)
-    - 강한 영역: 방정식 (90%), 도형 (85%)
+Response:
+{
+  "success": true,
+  "exam_id": "2024-MATH-MIDTERM-01",
+  "status": "PENDING",
+  "count": 150,
+  "papers": [
+    {
+      "paper_id": "P001",
+      "student_id": "20240101",
+      "image_path": "/uploads/exams/2024-math-midterm/scan_001.jpg",
+      "uploaded_at": "2024-11-18T09:00:00"
+    },
+    {
+      "paper_id": "P002",
+      "student_id": "20240102",
+      "image_path": "/uploads/exams/2024-math-midterm/scan_002.jpg",
+      "uploaded_at": "2024-11-18T09:00:15"
+    },
+    // ... 148개 더
+  ]
+}
 
-STEP 6: 맞춤 학습 계획 생성 (150명)
-STEP 7: 학부모에게 리포트 자동 발송
+────────────────────────────────────────────────────────────────
 
-처리 시간: 8분 (150명)
+STEP 2: 첫 번째 시험지 OCR 처리 (Vision AI)
 
-ROI:
-- 교사 수동 채점: 12시간 → AI: 8분 (99.0% 단축)
-- 객관성: 주관 편향 제거, 일관된 기준
-- 피드백 속도: 3일 → 즉시
-- 교사는 교육 본질에 집중 가능
+Request: exam_grading_ocr.scan_exam_paper(
+  image_path="/uploads/exams/2024-math-midterm/scan_001.jpg",
+  exam_id="2024-MATH-MIDTERM-01",
+  exam_type="MIXED"
+)
+
+Response:
+{
+  "success": true,
+  "exam_id": "2024-MATH-MIDTERM-01",
+  "image_path": "/uploads/exams/2024-math-midterm/scan_001.jpg",
+  "ocr_result": {
+    "student_info": {
+      "name": "김철수",
+      "student_id": "20240101",
+      "class": "3",
+      "number": "5"
+    },
+    "multiple_choice": {
+      "1": "③", "2": "①", "3": "④", "4": "②", "5": "③",
+      "6": "①", "7": "④", "8": "②", "9": "③", "10": "①",
+      "11": "②", "12": "④", "13": "③", "14": "①", "15": "②",
+      "16": "④", "17": "③", "18": "①", "19": "②", "20": "④",
+      "21": "③", "22": "①", "23": "④", "24": "②", "25": "③",
+      "26": "①", "27": "④", "28": "②", "29": "③", "30": "①"
+    },
+    "short_answer": {
+      "31": "x^2 + 3x + 2 = 0\n(x+1)(x+2) = 0\n∴ x = -1 또는 x = -2",
+      "32": "밑변 = 4cm, 높이 = 6cm\n넓이 = (1/2) × 4 × 6 = 12cm²",
+      "33": "f(x) = 2x + 3\nf(5) = 2(5) + 3 = 13",
+      "34": "P(A) = 3/10, P(B) = 4/10\nP(A∩B) = 1/10\n∴ P(A∪B) = 3/10 + 4/10 - 1/10 = 6/10 = 0.6",
+      "35": "y = ax^2 형태, (2, 8) 대입\n8 = a(2)^2 → a = 2\n∴ y = 2x^2"
+    }
+  }
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 3: 객관식 답안 채점 (첫 번째 학생)
+
+Request: exam_grading_ocr.grade_multiple_choice(
+  student_answers={
+    "1": "③", "2": "①", "3": "④", ... (30문제)
+  },
+  answer_key={
+    "1": "③", "2": "②", "3": "④", "4": "②", "5": "③",
+    // ... 정답 30개
+  },
+  score_per_question=2
+)
+
+Response:
+{
+  "success": true,
+  "total_questions": 30,
+  "correct_count": 24,
+  "incorrect_count": 6,
+  "score": 48,
+  "max_score": 60,
+  "accuracy": "80.0%",
+  "incorrect_questions": [
+    {"question": "2", "student_answer": "①", "correct_answer": "②"},
+    {"question": "7", "student_answer": "④", "correct_answer": "③"},
+    {"question": "12", "student_answer": "④", "correct_answer": "②"},
+    {"question": "17", "student_answer": "③", "correct_answer": "①"},
+    {"question": "23", "student_answer": "④", "correct_answer": "②"},
+    {"question": "28", "student_answer": "②", "correct_answer": "④"}
+  ]
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 4: 주관식 답안 채점 (문제 31번)
+
+Request: exam_grading_ocr.grade_math_answer(
+  question_id="31",
+  student_answer="x^2 + 3x + 2 = 0\n(x+1)(x+2) = 0\n∴ x = -1 또는 x = -2",
+  correct_answer="x = -1, x = -2",
+  rubric={
+    "answer": "정답 정확성 (4점)",
+    "process": "인수분해 과정 (4점)",
+    "notation": "수학 기호 사용 (2점)"
+  },
+  max_score=10
+)
+
+Response:
+{
+  "success": true,
+  "question_id": "31",
+  "grading": {
+    "is_correct": true,
+    "score": 10,
+    "partial_credit": false,
+    "evaluation": {
+      "answer_correctness": "두 근을 모두 정확히 구함 (4/4점)",
+      "process_correctness": "인수분해 방법을 올바르게 사용 (4/4점)",
+      "mistakes": []
+    },
+    "feedback": "완벽합니다! 인수분해 과정과 최종 답이 모두 정확합니다.",
+    "teacher_note": "우수한 풀이"
+  }
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 5-8: 나머지 주관식 4문제 채점 (병렬 처리)
+
+문제 32번: 9/10점 (풀이 과정 일부 누락, 답은 정확)
+문제 33번: 10/10점 (완벽)
+문제 34번: 7/10점 (최종 답 정확, 중간 과정 실수)
+문제 35번: 5/10점 (접근 방법은 맞으나 계산 오류)
+
+주관식 총점: 41/50점
+
+────────────────────────────────────────────────────────────────
+
+STEP 9: 학생 성적 데이터베이스 저장
+
+Request: learning_analytics.save_exam_result(
+  exam_id="2024-MATH-MIDTERM-01",
+  student_id="20240101",
+  scores={
+    "1": 2, "2": 0, "3": 2, "4": 2, "5": 2, ... (객관식 30개),
+    "31": 10, "32": 9, "33": 10, "34": 7, "35": 5
+  },
+  total_score=89,
+  graded_at="2024-11-18T10:15:00"
+)
+
+Response:
+{
+  "success": true,
+  "message": "학생 20240101의 시험 결과 저장 완료"
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 10-159: 나머지 149명 학생 시험지 처리
+
+(병렬 처리로 약 7분 소요)
+
+각 학생마다:
+- OCR 처리 (STEP 2와 동일)
+- 객관식 채점 (STEP 3과 동일)
+- 주관식 5문제 채점 (STEP 4-8과 동일)
+- 성적 저장 (STEP 9와 동일)
+
+처리 완료: 150명 전원
+
+────────────────────────────────────────────────────────────────
+
+STEP 160: 반 전체 성적 통계 분석
+
+Request: learning_analytics.analyze_class_performance(
+  exam_id="2024-MATH-MIDTERM-01",
+  class_id="3-5"
+)
+
+Response:
+{
+  "success": true,
+  "exam_id": "2024-MATH-MIDTERM-01",
+  "statistics": {
+    "student_count": 150,
+    "average": 73.5,
+    "median": 75.0,
+    "max": 98,
+    "min": 42,
+    "range": 56
+  }
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 161: 문항별 난이도 분석
+
+Request: learning_analytics.analyze_question_difficulty(
+  exam_id="2024-MATH-MIDTERM-01"
+)
+
+Response:
+{
+  "success": true,
+  "exam_id": "2024-MATH-MIDTERM-01",
+  "difficulty_analysis": {
+    "easy": [
+      {"question_id": "1", "accuracy": "94.0%", "correct_count": 141, "total_count": 150},
+      {"question_id": "3", "accuracy": "92.0%", "correct_count": 138, "total_count": 150},
+      {"question_id": "5", "accuracy": "89.3%", "correct_count": 134, "total_count": 150},
+      // ... 10개 문제
+    ],
+    "medium": [
+      {"question_id": "8", "accuracy": "68.0%", "correct_count": 102, "total_count": 150},
+      {"question_id": "12", "accuracy": "55.3%", "correct_count": 83, "total_count": 150},
+      {"question_id": "22", "accuracy": "62.7%", "correct_count": 94, "total_count": 150},
+      // ... 15개 문제
+    ],
+    "hard": [
+      {"question_id": "17", "accuracy": "23.3%", "correct_count": 35, "total_count": 150},
+      {"question_id": "34", "accuracy": "31.3%", "correct_count": 47, "total_count": 150},
+      {"question_id": "35", "accuracy": "38.0%", "correct_count": 57, "total_count": 150},
+      // ... 10개 문제
+    ]
+  },
+  "summary": "쉬운 문제: 10개, 중간: 15개, 어려운 문제: 10개"
+}
+
+가장 어려웠던 문제: 17번 (확률 문제, 정답률 23.3%)
+가장 쉬웠던 문제: 1번 (방정식 기초, 정답률 94.0%)
+
+────────────────────────────────────────────────────────────────
+
+STEP 162: 학생별 취약 영역 분석 (김철수 학생)
+
+Request: learning_analytics.analyze_weak_areas(
+  student_id="20240101",
+  exam_id="2024-MATH-MIDTERM-01"
+)
+
+Response:
+{
+  "success": true,
+  "student_id": "20240101",
+  "weak_areas": [
+    {"area": "확률과 통계", "accuracy": "40.0%", "correct": 2, "total": 5},
+    {"area": "이차함수", "accuracy": "55.6%", "correct": 5, "total": 9}
+  ],
+  "strong_areas": [
+    {"area": "방정식", "accuracy": "90.0%", "correct": 9, "total": 10},
+    {"area": "도형의 성질", "accuracy": "85.7%", "correct": 6, "total": 7},
+    {"area": "함수", "accuracy": "83.3%", "correct": 5, "total": 6}
+  ],
+  "recommendation": "취약 영역 집중 보완이 필요합니다."
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 163: 맞춤 학습 계획 생성 (김철수 학생)
+
+Request: learning_analytics.generate_study_plan(
+  student_id="20240101",
+  weak_areas=[
+    {"area": "확률과 통계", "accuracy": "40.0%"},
+    {"area": "이차함수", "accuracy": "55.6%"}
+  ],
+  target_improvement=15
+)
+
+Response:
+{
+  "success": true,
+  "student_id": "20240101",
+  "study_plan": "
+# 김철수 학생 맞춤 학습 계획 (2주)
+
+## 학습 목표
+- 현재 점수: 89점
+- 목표 점수: 104점 → 실제 목표 100점 (만점)
+- 핵심 개선 영역: 확률과 통계, 이차함수
+
+## 1주차: 확률과 통계 집중
+
+### Day 1-2: 확률 기초 개념
+- 경우의 수 복습 (순열, 조합)
+- 확률의 정의 및 기본 성질
+- 추천 문제: 기본서 p.124-135 (15문제)
+
+### Day 3-4: 조건부 확률
+- 조건부 확률 개념 이해
+- 독립사건과 종속사건 구분
+- 추천 문제: 기본서 p.136-145 (12문제)
+
+### Day 5-7: 확률 종합 문제
+- 복잡한 확률 문제 풀이
+- 기출문제 10문제
+- 오답 분석 및 복습
+
+## 2주차: 이차함수 보강
+
+### Day 8-9: 이차함수 그래프
+- 꼭짓점 형태 변환
+- 그래프 이동 문제
+- 추천 문제: 기본서 p.87-98 (15문제)
+
+### Day 10-11: 이차함수 활용
+- 최대/최소 문제
+- 실생활 응용 문제
+- 추천 문제: 심화서 p.45-56 (10문제)
+
+### Day 12-14: 종합 복습
+- 확률 + 이차함수 모의고사 (20문제)
+- 오답 노트 정리
+- 취약 부분 재복습
+
+## 복습 계획
+- 매일 오전: 전날 학습 내용 복습 (20분)
+- 매주 일요일: 주간 학습 내용 종합 복습 (2시간)
+- 2주 후: 모의고사로 성과 점검
+  "
+}
+
+────────────────────────────────────────────────────────────────
+
+STEP 164-313: 나머지 149명 학생 분석 및 학습 계획 생성
+
+(병렬 처리)
+
+모든 학생에 대해:
+- 취약 영역 분석 (STEP 162와 동일)
+- 맞춤 학습 계획 생성 (STEP 163과 동일)
+
+────────────────────────────────────────────────────────────────
+
+STEP 314: 학부모용 리포트 생성 (PDF)
+
+Request: learning_analytics.generate_parent_report(
+  student_id="20240101",
+  exam_id="2024-MATH-MIDTERM-01"
+)
+
+Response:
+{
+  "success": true,
+  "pdf_path": "/tmp/report_20240101_2024-MATH-MIDTERM-01.pdf",
+  "message": "학부모용 리포트 생성 완료"
+}
+
+리포트 내용:
+- 학생 기본 정보
+- 총점 및 반 평균 대비 위치
+- 영역별 성적 분석
+- 취약 영역 및 강점 영역
+- 맞춤 학습 계획 요약
+
+────────────────────────────────────────────────────────────────
+
+STEP 315: 학부모에게 이메일 발송 (150명)
+
+(생략 - 이메일 MCP 연동)
+
+────────────────────────────────────────────────────────────────
+
+최종 응답:
+
+"✅ 중간고사 수학 시험지 150장 자동 채점 완료
+
+## 📊 전체 성적 통계
+- 응시 인원: 150명
+- 평균 점수: 73.5점
+- 중앙값: 75.0점
+- 최고점: 98점 (이지훈 학생)
+- 최저점: 42점
+
+## 📈 문항 분석
+- 쉬운 문제: 10개 (정답률 75% 이상)
+- 중간 난이도: 15개 (정답률 40-75%)
+- 어려운 문제: 10개 (정답률 40% 미만)
+
+**가장 어려웠던 문제**: 17번 (확률 문제, 정답률 23.3%)
+→ 다음 수업 시 집중 설명이 필요합니다.
+
+## 👨‍🎓 개별 학생 분석 (예시: 김철수)
+- 총점: 89점 (상위 25%)
+- 강점 영역: 방정식 (90%), 도형 (85.7%), 함수 (83.3%)
+- 취약 영역: 확률과 통계 (40%), 이차함수 (55.6%)
+- 맞춤 학습 계획: 2주 프로그램 생성 완료
+
+## 📧 완료된 작업
+✅ 150장 시험지 OCR 처리 (Vision AI)
+✅ 객관식 30문제 자동 채점 (OMR 인식)
+✅ 주관식 5문제 AI 채점 (수식 인식 + 풀이 과정 평가)
+✅ 150명 학생별 취약 영역 분석
+✅ 150명 맞춤 학습 계획 생성
+✅ 150개 학부모용 리포트 PDF 생성
+✅ 학부모 이메일 발송 준비 완료
+
+**총 처리 시간**: 8분 32초
+**정확도**: 98.5% (교사 검증 기준)
+
+모든 채점 결과와 학습 계획은 교육 시스템에 저장되었습니다."
 ```
+
+### ROI 분석
+
+#### Before (수동 채점)
+
+**인력 구성**:
+- 교사 3명 (수학 교과 담당)
+
+**처리 시간**:
+- 객관식 30문제 채점: 2시간 (150명 × 30초/명)
+- 주관식 5문제 채점: 10시간 (150명 × 4분/명)
+  * 답안 읽기 및 이해
+  * 채점 기준 적용
+  * 부분 점수 판단
+  * 피드백 작성
+- 성적 입력 및 검증: 1시간
+- 통계 분석: 30분
+- 학생별 취약 영역 분석: 불가능 (시간 부족)
+- 맞춤 학습 계획: 불가능 (시간 부족)
+
+**총 소요 시간**: 13.5시간
+
+**인건비**:
+- 교사 3명 × 13.5시간 = 40.5시간
+- 시간당 50,000원 (초과 근무 수당)
+- **총 비용**: 2,025,000원
+
+**문제점**:
+1. **일관성 부족**: 교사마다 채점 기준이 다를 수 있음
+2. **주관성**: 주관식 채점에서 개인적 편향 가능
+3. **피드백 지연**: 결과 공지까지 평균 3일 소요
+4. **분석 불가**: 개별 학생 취약 영역 분석 시간 없음
+5. **교사 피로**: 단순 반복 작업으로 인한 스트레스
+6. **오류 가능성**: 수작업 성적 입력 시 실수 발생
+
+#### After (AI 자동 채점)
+
+**시스템 구성**:
+- Exam Grading OCR MCP (Vision AI)
+- Learning Analytics MCP (데이터 분석)
+- Student Database MCP (학생 정보)
+- Claude 3.5 Sonnet (LLM Agent)
+
+**처리 시간**:
+- 시험지 150장 OCR: 2분 (병렬 처리)
+- 객관식 채점: 10초 (즉시 계산)
+- 주관식 AI 채점: 5분 (Vision AI, 병렬)
+- 성적 DB 저장: 5초
+- 통계 분석: 10초
+- 학생별 취약 영역 분석: 1분
+- 맞춤 학습 계획 생성: 20초/명 → 50분 (병렬)
+- 학부모 리포트 PDF 생성: 1분
+
+**총 소요 시간**: 8분 32초
+
+**비용**:
+- Anthropic API 비용:
+  * Vision API (OCR): 150장 × $0.008/image = $1.20
+  * Claude Sonnet API (채점): 150명 × 5문제 × $0.003 = $2.25
+  * Claude Sonnet API (학습계획): 150명 × $0.015 = $2.25
+  * 총 API 비용: $5.70 ≈ 7,600원
+- 서버 운영비: 월 50,000원 ÷ 30일 ÷ 4회 = 417원/회
+- **총 비용**: 약 8,000원
+
+**개선 효과**:
+1. **일관성**: 동일한 채점 기준을 모든 학생에게 적용
+2. **객관성**: AI 기반으로 편향 제거
+3. **즉시 피드백**: 채점 후 10분 내 결과 공지
+4. **개별 분석**: 150명 전원 취약 영역 분석 제공
+5. **맞춤 학습**: 학생별 2주 학습 계획 자동 생성
+6. **정확성**: OCR + AI 검증으로 98.5% 정확도
+
+#### 재무적 효과
+
+**비용 절감**:
+- Before: 2,025,000원/회
+- After: 8,000원/회
+- **절감액**: 2,017,000원/회 (99.6% 절감)
+
+**연간 효과** (중간/기말고사 각 2회):
+- 연 4회 시험 × 2,017,000원 = **8,068,000원 절감**
+
+**추가 가치 창출**:
+- 학생별 맞춤 학습 계획: 시간당 80,000원 상당 × 150명 = 12,000,000원/회
+- 학부모 상담 자료: 시간당 100,000원 상당 × 50건 = 5,000,000원/회
+- **연간 추가 가치**: 68,000,000원
+
+#### 시간 효과
+
+**교사 업무 시간 절감**:
+- Before: 13.5시간
+- After: 0.5시간 (검증만)
+- **절감**: 13시간 (96.3%)
+
+**연간 절감 시간**:
+- 13시간/회 × 4회 = 52시간
+- 교사 3명 = 156시간
+
+**교사가 할 수 있는 일**:
+- 수업 준비 및 교재 연구
+- 학생 개별 상담
+- 수업 품질 개선
+- 교육 콘텐츠 개발
+
+#### 품질 효과
+
+**Before**:
+- 채점 정확도: ~95% (피로도로 인한 실수)
+- 일관성: 교사마다 ±5점 차이
+- 피드백 품질: 간단한 정오 표시
+- 개별 분석: 불가능
+
+**After**:
+- 채점 정확도: 98.5% (Vision AI + LLM)
+- 일관성: 100% (동일 기준 적용)
+- 피드백 품질: 구체적 개선 방향 제시
+- 개별 분석: 150명 전원 제공
+
+**학생 만족도 향상**:
+- 즉시 피드백: ⭐⭐⭐⭐⭐
+- 맞춤 학습 계획: ⭐⭐⭐⭐⭐
+- 취약 영역 분석: ⭐⭐⭐⭐⭐
+
+#### 추가 비즈니스 효과
+
+**1. 학원 경쟁력 강화**:
+- AI 자동 채점 시스템 도입으로 차별화
+- 학부모 신뢰도 향상
+- 신규 학생 유치 효과: +15% (연 30명 증가)
+
+**2. 데이터 기반 교육**:
+- 문항별 난이도 분석 → 다음 시험 출제 개선
+- 취약 영역 통계 → 커리큘럼 조정
+- 학생별 성장 추적 → 장기 학습 전략 수립
+
+**3. 확장 가능성**:
+- 다른 과목으로 확대 (영어, 과학 등)
+- 월간 모의고사 자동 채점 적용
+- 온라인 학습 플랫폼 연동
+
+**4. 교사 만족도 향상**:
+- 단순 반복 작업 제거
+- 본질적 교육 활동에 집중
+- 워크-라이프 밸런스 개선
+
+#### 총평
+
+**투자 대비 수익 (ROI)**:
+- 초기 시스템 구축 비용: 3,000,000원 (MCP 서버 개발 + 설정)
+- 월간 운영 비용: 50,000원 (서버 + API)
+- 연간 절감액: 8,068,000원
+- **ROI**: (8,068,000 - 600,000) / 3,000,000 × 100 = **249%**
+- **회수 기간**: 4.5개월
+
+**핵심 가치**:
+1. ✅ 99.6% 비용 절감
+2. ✅ 96.3% 시간 절감
+3. ✅ 98.5% 채점 정확도
+4. ✅ 150명 개별 분석 제공
+5. ✅ 교사 업무 효율 극대화
+6. ✅ 학생 학습 성과 향상
+
+**결론**: AI 자동 채점 시스템은 교육 기관의 필수 인프라로, 비용 절감과 교육 품질 향상을 동시에 달성할 수 있는 최적의 솔루션입니다.
 
 ---
 
