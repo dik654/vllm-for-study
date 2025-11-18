@@ -1,27 +1,53 @@
-FROM python:3.10-slim
+# Build stage
+FROM rust:1.75 as builder
 
 WORKDIR /app
 
-# Install system dependencies
+# Install dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
+    libssl-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy workspace files
+COPY Cargo.toml ./
+COPY router/Cargo.toml ./router/
+COPY provider/Cargo.toml ./provider/
+COPY shared/Cargo.toml ./shared/
 
-# Install Poetry
-RUN pip install poetry
+# Create dummy source files to cache dependencies
+RUN mkdir -p router/src provider/src shared/src && \
+    echo "fn main() {}" > router/src/main.rs && \
+    echo "fn main() {}" > provider/src/main.rs && \
+    echo "pub fn dummy() {}" > shared/src/lib.rs
 
-# Configure Poetry to not create virtual environment
-RUN poetry config virtualenvs.create false
+# Build dependencies only
+RUN cargo build --release --bin provider
 
-# Install dependencies
-RUN poetry install --no-dev --no-root
+# Remove dummy sources
+RUN rm -rf router/src provider/src shared/src
 
-# Copy application code
-COPY provider ./provider
-COPY shared ./shared
+# Copy actual source code
+COPY router/src ./router/src
+COPY provider/src ./provider/src
+COPY shared/src ./shared/src
+
+# Build the actual binary
+RUN cargo build --release --bin provider
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/provider /app/provider
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -32,7 +58,7 @@ EXPOSE 8001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8001/health')"
+    CMD curl -f http://localhost:8001/health || exit 1
 
 # Default command
-CMD ["uvicorn", "provider.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["./provider"]

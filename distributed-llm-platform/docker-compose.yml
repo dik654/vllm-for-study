@@ -45,10 +45,11 @@ services:
       dockerfile: docker/Dockerfile.router
     container_name: distributed-llm-router
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/distributed_llm
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/distributed_llm
       - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=info
     env_file:
       - .env
     ports:
@@ -58,35 +59,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./router:/app/router
-      - ./shared:/app/shared
     networks:
       - distributed-llm-network
-    command: uvicorn router.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # Celery Worker (for workflow execution)
-  celery-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.router
-    container_name: distributed-llm-celery-worker
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/distributed_llm
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    env_file:
-      - .env
-    depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./router:/app/router
-      - ./shared:/app/shared
-    networks:
-      - distributed-llm-network
-    command: celery -A router.core.celery_app worker --loglevel=info
+  # Workflow Worker (will be implemented later with Rust async tasks)
+  # celery-worker:
+  #   Commented out - will be replaced with Rust async task worker
 
   # Provider Agent (Example - can be scaled)
   provider-01:
@@ -100,18 +78,19 @@ services:
       - ROUTER_URL=http://router:8000
       - VLLM_HOST=localhost
       - VLLM_PORT=8001
+      - HOST=0.0.0.0
+      - PORT=8001
+      - LOG_LEVEL=info
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/distributed_llm
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     ports:
       - "8001:8001"
     depends_on:
       - router
-    volumes:
-      - ./provider:/app/provider
-      - ./shared:/app/shared
     networks:
       - distributed-llm-network
-    command: uvicorn provider.main:app --host 0.0.0.0 --port 8001 --reload
 
   # Prometheus (Monitoring)
   prometheus:

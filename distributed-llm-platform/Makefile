@@ -1,4 +1,4 @@
-.PHONY: help install dev-install test lint format clean docker-up docker-down migrate db-upgrade db-downgrade
+.PHONY: help build build-release test lint format clean docker-up docker-down migrate db-upgrade db-create run-router run-provider check
 
 help:  ## Show this help message
 	@echo 'Usage: make [target]'
@@ -6,33 +6,30 @@ help:  ## Show this help message
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-install:  ## Install production dependencies
-	pip install -r requirements.txt
+build:  ## Build all binaries in debug mode
+	cargo build --workspace
 
-dev-install:  ## Install development dependencies
-	poetry install
+build-release:  ## Build all binaries in release mode
+	cargo build --workspace --release
 
 test:  ## Run tests
-	pytest -v --cov=router --cov=provider --cov=shared
+	cargo test --workspace
 
-lint:  ## Run linting
-	black --check .
-	isort --check-only .
-	flake8 .
-	mypy router provider shared
+check:  ## Check code without building
+	cargo check --workspace
+
+lint:  ## Run linting with clippy
+	cargo clippy --workspace -- -D warnings
 
 format:  ## Format code
-	black .
-	isort .
+	cargo fmt --all
 
-clean:  ## Clean up cache and build files
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
-	rm -rf .pytest_cache
-	rm -rf .mypy_cache
-	rm -rf htmlcov
-	rm -rf .coverage
+format-check:  ## Check code formatting
+	cargo fmt --all -- --check
+
+clean:  ## Clean up build artifacts
+	cargo clean
+	rm -rf target/
 
 docker-up:  ## Start all services with Docker Compose
 	docker-compose up -d
@@ -46,23 +43,43 @@ docker-logs:  ## View logs
 docker-build:  ## Build Docker images
 	docker-compose build
 
-migrate:  ## Create new migration
-	alembic revision --autogenerate -m "$(MSG)"
+docker-rebuild:  ## Rebuild Docker images without cache
+	docker-compose build --no-cache
 
-db-upgrade:  ## Apply migrations
-	alembic upgrade head
+migrate:  ## Create new migration file
+	@echo "Creating migration: $(MSG)"
+	@mkdir -p migrations
+	@echo "-- Migration: $(MSG)" > migrations/$(shell date +%Y%m%d%H%M%S)_$(MSG).sql
+	@echo "-- Add your SQL here" >> migrations/$(shell date +%Y%m%d%H%M%S)_$(MSG).sql
 
-db-downgrade:  ## Rollback last migration
-	alembic downgrade -1
+db-create:  ## Create database
+	docker-compose exec postgres psql -U postgres -c "CREATE DATABASE distributed_llm;"
+
+db-upgrade:  ## Apply migrations using sqlx
+	cargo install sqlx-cli --no-default-features --features postgres
+	sqlx migrate run --database-url "${DATABASE_URL}"
 
 db-reset:  ## Reset database (WARNING: destroys data)
-	alembic downgrade base
-	alembic upgrade head
+	docker-compose exec postgres psql -U postgres -c "DROP DATABASE IF EXISTS distributed_llm;"
+	docker-compose exec postgres psql -U postgres -c "CREATE DATABASE distributed_llm;"
+	sqlx migrate run --database-url "${DATABASE_URL}"
 
 run-router:  ## Run router locally
-	python -m router.main
+	cargo run --bin router
 
 run-provider:  ## Run provider locally
-	python -m provider.main
+	cargo run --bin provider
+
+watch-router:  ## Run router with auto-reload
+	cargo watch -x "run --bin router"
+
+watch-provider:  ## Run provider with auto-reload
+	cargo watch -x "run --bin provider"
+
+dev:  ## Start development environment
+	docker-compose up -d postgres redis
+	@echo "Waiting for services to be ready..."
+	@sleep 3
+	cargo run --bin router
 
 .DEFAULT_GOAL := help
