@@ -7075,6 +7075,355 @@ ROI:
 
 ---
 
+## 21. 게임 개발 (Game Development): AI 게임 테스팅 + 밸런스 조정
+
+### 시나리오
+**요청**: "신규 RPG 게임의 100개 던전을 자동 테스트하고, 난이도 밸런스 문제 찾아서 리포트해줘"
+
+### 핵심 MCP: Game Testing MCP (자동 플레이), Analytics MCP (플레이 데이터 분석), Balance Tuning MCP
+
+```
+Agent 실행:
+1. 100개 던전 자동 플레이 (AI 에이전트 × 1000회)
+   - 각 던전 10회씩 자동 클리어 시도
+   - 플레이 데이터 수집 (클리어율, 평균 시간, 사망 지점 등)
+2. 난이도 밸런스 분석
+   - 던전 23번: 클리어율 12% (너무 어려움)
+   - 던전 67번: 평균 클리어 시간 2분 (너무 쉬움)
+   - 보스 몬스터 HP 불균형 발견 (7개 던전)
+3. AI 추천 밸런스 조정안
+   - 던전 23: 적 HP -15%, 보상 +20%
+   - 던전 67: 적 수량 +30%, 공격력 +10%
+4. 자동 리포트 생성 (그래프, 히트맵 포함)
+5. 개발팀에 Slack 알림
+
+ROI:
+- QA 테스트: 20명 × 1주일 → AI: 6시간 (95% 단축)
+- 밸런스 문제 발견율: 수동 60% → AI 98%
+- 게임 출시 품질: 크게 향상
+- QA 비용: 연간 8천만원 절감
+```
+
+---
+
+## 22. 건설/엔지니어링 (Construction & Engineering): AI 도면 분석 + 안전 점검
+
+### 시나리오
+**요청**: "건설 현장 CCTV 영상 500시간을 분석해서 안전모 미착용, 위험 행동 자동 탐지하고 알림 보내줘"
+
+### 핵심 MCP: Vision Safety MCP (Vision AI 안전 점검), Blueprint Analysis MCP (도면 OCR), Compliance MCP
+
+```
+Agent 실행:
+1. 500시간 CCTV 영상 Vision AI 분석 (30fps)
+   → 총 5,400만 프레임 실시간 처리
+2. 안전 위반 자동 탐지
+   - 안전모 미착용: 127건
+   - 안전벨트 미착용: 43건
+   - 위험 구역 진입: 89건
+   - 중장비 안전거리 미준수: 34건
+3. 위반 장면 자동 캡처 + 시간/위치 기록
+4. 현장 관리자에게 즉시 알림 (SMS + Slack)
+5. 주간 안전 리포트 자동 생성
+6. 도면 대조 검증 (설계대로 시공되었는지 확인)
+
+ROI:
+- 안전 점검: 3명 × 8시간/일 → AI: 실시간 자동
+- 안전사고: 연 15건 → 2건 (87% 감소)
+- 산재 보험료: 30% 감소
+- 안전 관리 인건비: 연 1.2억원 절감
+```
+
+---
+
+## 23. 농업/스마트팜 (Agriculture & Smart Farm): AI 작물 모니터링 + 병충해 탐지
+
+### 시나리오
+**요청**: "토마토 농장 5,000평의 드론 촬영 이미지 3,000장을 분석해서 병충해, 영양 결핍, 수확 시기 판단해줘"
+
+### 핵심 MCP: Crop Vision MCP (작물 이미지 분석), IoT Sensor MCP (온도/습도/토양), Weather MCP
+
+```
+Agent 실행:
+1. 드론 이미지 3,000장 Vision AI 분석
+   - 작물 건강 상태 평가 (A~F 등급)
+   - 병충해 탐지: 237그루 (4.7%)
+   - 영양 결핍: 89그루 (잎 색상 변화)
+2. 병충해 유형 자동 분류
+   - 흰가루병: 127그루
+   - 역병: 68그루
+   - 해충 피해: 42그루
+3. 영역별 처방 자동 생성
+   - A구역: 살균제 처리 필요
+   - B구역: 질소 비료 추가
+   - C구역: 일주일 후 수확 가능
+4. IoT 센서 데이터 결합 분석
+   - 온도, 습도, 토양 수분 최적화 제안
+5. 농부에게 모바일 앱 알림
+
+ROI:
+- 병충해 조기 발견: +2주 빨라짐
+- 작물 손실률: 15% → 3% (80% 감소)
+- 수확량: 평균 23% 증가
+- 농약 사용량: 40% 감소 (정밀 살포)
+- 연간 소득 증대: 3,500만원
+```
+
+---
+
+## 24. 정부/공공 (Government & Public Sector): AI 민원 처리 + 문서 자동화
+
+### 시나리오
+**요청**: "하루 300건의 민원 접수 문서(PDF/이미지)를 자동 분류하고, 담당 부서 배정 후 처리 현황 추적해줘"
+
+### 핵심 MCP: Document Classification MCP (민원 분류), Workflow MCP (업무 프로세스), Citizen DB MCP
+
+```
+Agent 실행:
+1. 민원 문서 300건 OCR 처리
+   - 신청서, 증명서, 진정서 등 자동 인식
+   - 필기체 작성 문서도 98% 정확도
+2. AI 자동 분류 (12개 카테고리)
+   - 건축/건설: 87건 → 도시계획과
+   - 복지/연금: 64건 → 사회복지과
+   - 세금/과태료: 53건 → 세무과
+   - 기타: 96건 → 민원실
+3. 긴급도 자동 판정 (HIGH/MEDIUM/LOW)
+   - HIGH: 23건 (즉시 처리 필요)
+4. 담당 공무원 자동 배정 (업무량 균등 배분)
+5. 민원인에게 SMS 자동 발송 (접수 완료, 예상 처리 기간)
+6. 처리 현황 실시간 대시보드
+
+ROI:
+- 민원 분류: 3명 × 2시간 → AI: 5분 (98% 단축)
+- 담당 부서 오배정: 15% → 2%
+- 민원 처리 기간: 평균 5일 → 2.5일 (50% 단축)
+- 시민 만족도: 67점 → 89점 (+22점)
+- 행정 효율: 연 4억원 절감
+```
+
+---
+
+## 25. 에너지/유틸리티 (Energy & Utilities): AI 전력망 모니터링 + 이상 탐지
+
+### 시나리오
+**요청**: "전국 1,200개 변전소의 실시간 센서 데이터(전압/전류/온도)를 분석해서 이상 징후 탐지하고 정전 예방해줘"
+
+### 핵심 MCP: Grid Monitoring MCP (전력망 센서), Anomaly Detection MCP (ML 이상 탐지), Predictive Maintenance MCP
+
+```
+Agent 실행:
+1. 1,200개 변전소 × 50개 센서 = 6만개 데이터 포인트 실시간 모니터링
+   - 1초마다 데이터 수집 및 분석
+2. ML 이상 탐지 (시계열 분석)
+   - 변전소 #347: 전압 불안정 패턴 감지
+   - 변전소 #892: 온도 급상승 (과부하 징후)
+   - 송전선 #23: 누전 의심
+3. 이상 징후 심각도 자동 평가
+   - CRITICAL: 3건 (즉시 조치)
+   - WARNING: 17건 (24시간 내 점검)
+   - INFO: 52건 (주간 모니터링)
+4. 현장 기사 자동 출동 지시
+   - 변전소 #347: 즉시 출동 (정전 위험 90%)
+5. 예측 정비 일정 자동 생성
+6. 실시간 알림 (관제 센터 대시보드)
+
+ROI:
+- 정전 사고: 연 47건 → 3건 (94% 감소)
+- 정전으로 인한 경제 손실: 연 120억원 → 8억원
+- 설비 수명: 평균 2.3년 연장
+- 예방 정비 효율: 67% 향상
+- 연간 절감: 112억원
+```
+
+---
+
+## 26. 환경/지속가능성 (Environment & Sustainability): AI 탄소 배출 모니터링 + ESG 리포트
+
+### 시나리오
+**요청**: "공장 50개의 에너지 사용량, 폐기물, 탄소 배출량을 실시간 모니터링하고 ESG 리포트 자동 생성해줘"
+
+### 핵심 MCP: Carbon Tracking MCP (탄소 계산), ESG Reporting MCP (리포트 생성), IoT Sensor MCP
+
+```
+Agent 실행:
+1. 50개 공장 실시간 데이터 수집
+   - 전기 사용량: 시간별 측정
+   - 가스 사용량: 실시간 모니터링
+   - 폐기물 발생량: 일별 집계
+2. 탄소 배출량 자동 계산 (Scope 1, 2, 3)
+   - 총 배출량: 월 2,340톤 CO2e
+   - 공장별 배출량 순위
+   - 전년 대비 +3.2% 증가 (경고)
+3. 배출량 감축 AI 제안
+   - 공장 A: 조명 LED 교체 → 연 23톤 감축
+   - 공장 B: 공정 시간 최적화 → 연 67톤 감축
+   - 공장 C: 재생에너지 전환 → 연 145톤 감축
+4. ESG 리포트 자동 생성 (GRI 기준)
+   - 환경(E): 탄소, 에너지, 폐기물
+   - 사회(S): 안전, 복지 지표
+   - 지배구조(G): 컴플라이언스
+5. 투자자/금융기관에 제출
+
+ROI:
+- 리포트 작성: 3주 → 1시간 (99.7% 단축)
+- 탄소 배출량: 연 2,340톤 → 1,870톤 (20% 감축)
+- 탄소세 절감: 연 2.3억원
+- ESG 등급: B → A로 상승 → 대출 금리 0.5%p 인하
+- 친환경 인증 획득 → 수주 기회 증대
+```
+
+---
+
+## 27. 패션/의류 (Fashion & Apparel): AI 트렌드 분석 + 재고 최적화
+
+### 시나리오
+**요청**: "SNS에서 패션 트렌드 이미지 10만장을 분석해서 다음 시즌 유행 예측하고, 재고 발주량 최적화해줘"
+
+### 핵심 MCP: Fashion Vision MCP (이미지 분석), Trend Analysis MCP (SNS 분석), Inventory MCP
+
+```
+Agent 실행:
+1. Instagram/Pinterest 이미지 10만장 크롤링
+   - 패션 인플루언서 계정 500개
+   - 해시태그 기반 트렌드 수집
+2. Vision AI 스타일 분석
+   - 색상 트렌드: 파스텔 톤 +34%, 네온 컬러 +18%
+   - 실루엣: 오버사이즈 +27%, 크롭 +15%
+   - 소재: 니트 +22%, 데님 -8%
+   - 패턴: 체크 +19%, 플로럴 +12%
+3. 다음 시즌 트렌드 예측 (AI ML 모델)
+   - TOP 5 트렌드 아이템 제시
+4. 재고 최적화 제안
+   - 파스텔 니트: 발주량 2,000개 → 3,200개 (+60%)
+   - 데님 재킷: 1,500개 → 900개 (-40%)
+5. 디자이너에게 트렌드 리포트 제공
+
+ROI:
+- 트렌드 분석: 2명 × 2주 → AI: 3시간 (99% 단축)
+- 재고 적중률: 67% → 89% (+22%p)
+- 재고 폐기 손실: 연 8억원 → 2억원 (75% 감소)
+- 품절로 인한 기회 손실: 60% 감소
+- 매출 증대: 연 34억원
+```
+
+---
+
+## 28. 스포츠/피트니스 (Sports & Fitness): AI 경기 분석 + 선수 퍼포먼스 추적
+
+### 시나리오
+**요청**: "프로 축구 경기 영상 30경기를 분석해서 선수별 주요 지표(패스 성공률, 드리블, 슈팅 등) 추출하고 전술 리포트 생성해줘"
+
+### 핵심 MCP: Sports Vision MCP (경기 영상 분석), Performance Analytics MCP, Tactical MCP
+
+```
+Agent 실행:
+1. 30경기 영상 Vision AI 분석 (총 45시간)
+   - 선수 추적 (포지션별 이동 경로)
+   - 볼 터치 횟수, 패스 라인 분석
+   - 공간 점유율 히트맵 생성
+2. 선수별 퍼포먼스 지표 자동 추출 (20명)
+   - 선수 A (공격수):
+     * 슈팅: 47회 (유효슈팅 23회, 성공률 49%)
+     * 드리블 성공률: 67%
+     * 평균 스프린트 속도: 31.2km/h
+   - 선수 B (미드필더):
+     * 패스 성공률: 89% (리그 상위 5%)
+     * 인터셉트: 경기당 4.2회
+3. 전술 패턴 AI 분석
+   - 상대팀 역습 취약 시간대: 전반 35-40분
+   - 우측 측면 공격 성공률 높음 (72%)
+   - 코너킥 득점 확률: 14% (리그 평균 8%)
+4. 다음 경기 전술 AI 추천
+   - 상대팀 약점 공략 방안 5가지 제시
+5. 감독에게 전술 리포트 제공
+
+ROI:
+- 경기 분석: 분석관 2명 × 1주일 → AI: 6시간
+- 전술 인사이트 품질: 크게 향상
+- 선수 부상 예측 정확도: 78% (과부하 징후 조기 발견)
+- 경기 승률: 시즌 평균 +8%p 향상
+- 리그 순위 상승 → 스폰서십 수익 증대
+```
+
+---
+
+## 29. 자동차/모빌리티 (Automotive & Mobility): AI 자율주행 시뮬레이션 + 안전 테스트
+
+### 시나리오
+**요청**: "자율주행 알고리즘을 100만 가지 시나리오(야간/우천/사고 등)에서 시뮬레이션 테스트하고 안전성 리포트 생성해줘"
+
+### 핵심 MCP: Simulation MCP (가상 환경), Sensor Fusion MCP (센서 데이터), Safety Analysis MCP
+
+```
+Agent 실행:
+1. 100만 가지 주행 시나리오 자동 생성
+   - 날씨: 맑음/비/눈/안개 (각 25%)
+   - 시간대: 주간/야간/새벽 (각 33%)
+   - 교통 상황: 원활/혼잡/사고 (각 33%)
+   - 특수 상황: 보행자 돌출, 급정거, 역주행 등
+2. 시뮬레이션 실행 (클라우드 GPU 클러스터)
+   - 100만 시나리오 × 평균 5분 주행
+   - 병렬 처리: 1,000대 동시 시뮬레이션
+   - 총 소요 시간: 83시간
+3. 안전성 지표 자동 평가
+   - 충돌 발생: 234건 (0.023%)
+   - 급제동 횟수: 평균 경기당 0.8회
+   - 차선 이탈: 12건 (알고리즘 버그)
+4. 실패 시나리오 분석
+   - 야간 + 보행자 검출 실패: 89건
+   - 폭우 + 차선 인식 오류: 67건
+5. 알고리즘 개선 제안 (AI)
+6. 안전성 리포트 제출 (정부 인증용)
+
+ROI:
+- 실차 테스트: 불가능한 규모
+- 테스트 비용: 실차 대비 99.8% 절감
+- 개발 기간: 6개월 단축
+- 안전성 인증: 조기 획득
+- 시장 출시: 경쟁사 대비 3개월 앞서 출시 가능
+```
+
+---
+
+## 30. 우주/항공 (Space & Aerospace): AI 위성 이미지 분석 + 이상 탐지
+
+### 시나리오
+**요청**: "지구 관측 위성에서 촬영한 이미지 10만장을 분석해서 산불, 불법 벌목, 해양 오염 자동 탐지하고 알림 보내줘"
+
+### 핵심 MCP: Satellite Vision MCP (위성 이미지 분석), GIS MCP (지리 정보), Alert MCP
+
+```
+Agent 실행:
+1. 위성 이미지 10만장 Vision AI 분석
+   - 해상도: 10m/픽셀
+   - 커버리지: 전 세계 육지 80%
+2. 환경 이상 자동 탐지
+   - 산불: 23건 발견 (조기 감지)
+     * 인도네시아: 12건
+     * 브라질 아마존: 7건
+     * 캘리포니아: 4건
+   - 불법 벌목: 67개 지역 (위성 이미지 비교 분석)
+   - 해양 오염: 34건 (기름 유출, 쓰레기 섬)
+   - 도시 확장: 89개 지역 (무단 개발 의심)
+3. 변화 탐지 (시계열 비교)
+   - 2023년 vs 2024년 삼림 면적 변화
+   - 빙하 감소율 측정
+4. 긴급 알림 자동 발송
+   - 산불: 해당 국가 정부 + 소방당국
+   - 불법 벌목: 환경단체 + 국제기구
+5. 월간 환경 모니터링 리포트 생성
+
+ROI:
+- 이미지 분석: 분석관 100명 × 1개월 → AI: 8시간
+- 조기 탐지: 산불 피해 면적 평균 60% 감소
+- 불법 행위 적발: 3배 증가
+- 환경 보호 효과: 측정 불가능한 가치
+- 인류의 지구 지킴이 역할 수행
+```
+
+---
+
 ## 🎯 산업별 MCP + Agent 적용 요약
 
 ```
@@ -7118,6 +7467,856 @@ ROI:
 - 도메인 특화 MCP 개발
 - 실시간 데이터 연동
 - 인간과 AI의 협업 (Human-in-the-loop)
+```
+
+---
+
+## ⚡ 고급 MCP + Agent 아키텍처 패턴
+
+MCP + Agent 시스템을 프로덕션 환경에서 운영하기 위한 고급 패턴들입니다.
+
+### 1. 이벤트 드리븐 패턴 (Event-Driven Pattern)
+
+실시간 이벤트에 반응하여 자동으로 Agent를 트리거하는 패턴입니다.
+
+```python
+# 패턴: Webhook → Event Bus → Agent 실행
+
+from fastapi import FastAPI, Request
+import asyncio
+from redis import Redis
+import json
+
+app = FastAPI()
+redis_client = Redis(host='localhost', port=6379)
+
+# 1. Webhook 수신 (외부 시스템에서 이벤트 발생)
+@app.post("/webhook/order-created")
+async def handle_order_created(request: Request):
+    """주문 생성 이벤트 수신"""
+    event_data = await request.json()
+
+    # Event Bus에 발행 (Redis Pub/Sub)
+    await publish_event("order.created", event_data)
+
+    return {"status": "event_received"}
+
+async def publish_event(event_type: str, data: dict):
+    """이벤트 발행"""
+    event = {
+        "type": event_type,
+        "timestamp": datetime.now().isoformat(),
+        "data": data
+    }
+    redis_client.publish("mcp_events", json.dumps(event))
+
+# 2. Event Consumer (Agent 트리거)
+async def event_consumer():
+    """이벤트 소비 및 Agent 실행"""
+    pubsub = redis_client.pubsub()
+    pubsub.subscribe("mcp_events")
+
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            event = json.loads(message['data'])
+
+            # 이벤트 타입별로 적절한 Agent 실행
+            if event['type'] == "order.created":
+                await trigger_order_processing_agent(event['data'])
+            elif event['type'] == "payment.completed":
+                await trigger_shipping_agent(event['data'])
+            elif event['type'] == "anomaly.detected":
+                await trigger_alert_agent(event['data'])
+
+async def trigger_order_processing_agent(order_data: dict):
+    """주문 처리 Agent 실행"""
+    from anthropic import Anthropic
+
+    agent = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    # Agent에게 MCP 도구 제공
+    tools = [
+        # Inventory MCP, Payment MCP, Shipping MCP 등
+    ]
+
+    response = agent.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=2048,
+        tools=tools,
+        messages=[{
+            "role": "user",
+            "content": f"새 주문이 접수되었습니다: {json.dumps(order_data)}. 재고 확인 → 결제 확인 → 배송 준비 워크플로우를 실행해주세요."
+        }]
+    )
+
+    # Agent가 자동으로 MCP 호출하여 처리
+
+# 실전 예시: E-Commerce 자동화
+"""
+이벤트 플로우:
+1. 고객이 주문 → order.created 이벤트
+2. Agent가 자동 실행:
+   - Inventory MCP: 재고 확인 및 예약
+   - Payment MCP: 결제 검증
+   - Shipping MCP: 배송지 확인 및 배송사 선택
+   - Email MCP: 주문 확인 이메일 발송
+3. 결제 완료 → payment.completed 이벤트
+4. Agent가 자동 실행:
+   - Shipping MCP: 배송 신청
+   - ERP MCP: 재고 차감
+   - CRM MCP: 고객 이력 업데이트
+
+장점:
+- 실시간 자동화: 이벤트 발생 즉시 처리
+- 느슨한 결합: 시스템 간 독립성 유지
+- 확장성: 새 이벤트 타입 쉽게 추가
+- 복원력: 이벤트 큐를 통한 신뢰성 보장
+"""
+```
+
+### 2. 스트리밍 패턴 (Streaming Pattern)
+
+대용량 데이터를 스트리밍 방식으로 처리하는 패턴입니다.
+
+```python
+# 패턴: 대용량 데이터 → 청크 단위 처리 → 점진적 응답
+
+import asyncio
+from typing import AsyncGenerator
+
+class StreamingMCP(Server):
+    """스트리밍 데이터 처리 MCP"""
+
+    async def process_large_dataset_streaming(
+        self,
+        data_source: str
+    ) -> AsyncGenerator[dict, None]:
+        """대용량 데이터를 청크 단위로 스트리밍 처리"""
+
+        chunk_size = 1000
+        processed_count = 0
+
+        # 데이터 소스에서 스트리밍으로 읽기
+        async for chunk in self._read_data_stream(data_source, chunk_size):
+            # 청크 처리
+            results = await self._process_chunk(chunk)
+
+            processed_count += len(chunk)
+
+            # 중간 결과 yield (점진적 응답)
+            yield {
+                "processed_count": processed_count,
+                "chunk_results": results,
+                "progress": f"{processed_count} / estimated_total"
+            }
+
+    async def _read_data_stream(self, source: str, chunk_size: int):
+        """데이터 소스에서 청크 단위로 읽기"""
+        # 예: PostgreSQL에서 커서로 읽기
+        async with self.db_pool.acquire() as conn:
+            async with conn.transaction():
+                cursor = await conn.cursor(
+                    "SELECT * FROM large_table WHERE ...",
+                    prefetch=chunk_size
+                )
+
+                while True:
+                    rows = await cursor.fetch(chunk_size)
+                    if not rows:
+                        break
+                    yield rows
+
+# Agent와 스트리밍 통합
+async def streaming_agent_execution():
+    """스트리밍 방식으로 Agent 실행"""
+    from anthropic import Anthropic
+
+    agent = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    # Streaming API 사용
+    async with agent.messages.stream(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=4096,
+        messages=[{
+            "role": "user",
+            "content": "100만 건의 거래 데이터를 분석해서 이상 거래를 찾아주세요."
+        }],
+        tools=[
+            # Streaming MCP tools
+        ]
+    ) as stream:
+        async for text in stream.text_stream:
+            # 실시간으로 응답 스트리밍
+            print(text, end="", flush=True)
+
+            # WebSocket으로 클라이언트에 전송
+            await websocket.send_text(text)
+
+# 실전 예시: 빅데이터 분석
+"""
+시나리오: 1억 건의 고객 거래 데이터 분석
+
+기존 방식:
+- 전체 데이터 로드 → 메모리 부족
+- 처리 완료까지 응답 없음 → 사용자 불안
+
+스트리밍 방식:
+- 100만 건씩 청크 처리
+- 실시간 진행률 표시: "3,200,000 / 100,000,000 (3.2%)"
+- 중간 결과 즉시 표시: "이상 거래 234건 발견"
+- 메모리 사용량: 일정하게 유지
+
+장점:
+- 메모리 효율: O(chunk_size) 메모리 사용
+- 사용자 경험: 실시간 피드백
+- 조기 종료 가능: 충분한 결과 발견 시 중단
+- 오류 복구: 청크 단위 재시도
+"""
+```
+
+### 3. 배치 처리 패턴 (Batch Processing Pattern)
+
+대량 작업을 효율적으로 처리하는 패턴입니다.
+
+```python
+# 패턴: 작업 큐 → 병렬 처리 → 결과 집계
+
+from celery import Celery, group
+from kombu import Queue
+
+app = Celery('mcp_batch', broker='redis://localhost:6379/0')
+
+# Celery 큐 설정
+app.conf.task_queues = (
+    Queue('high_priority', routing_key='high'),
+    Queue('normal', routing_key='normal'),
+    Queue('low_priority', routing_key='low'),
+)
+
+@app.task(queue='normal')
+def process_single_item(item_id: str, mcp_config: dict):
+    """단일 아이템 처리 (Celery 워커에서 실행)"""
+    # MCP 서버 호출
+    result = call_mcp_tool(mcp_config, item_id)
+    return {"item_id": item_id, "result": result}
+
+def batch_process_with_celery(item_ids: list[str], mcp_config: dict):
+    """배치 처리 (병렬 실행)"""
+
+    # 작업 그룹 생성
+    job = group(
+        process_single_item.s(item_id, mcp_config)
+        for item_id in item_ids
+    )
+
+    # 병렬 실행
+    result = job.apply_async()
+
+    # 결과 수집 (비동기)
+    results = result.get(timeout=300)  # 5분 타임아웃
+
+    return results
+
+# 실전 예시: 대량 이미지 처리
+@app.task(queue='high_priority', bind=True, max_retries=3)
+def process_image_vision_ai(self, image_path: str):
+    """Vision AI로 이미지 처리 (재시도 로직 포함)"""
+    try:
+        # Vision MCP 호출
+        result = vision_mcp.analyze_image(image_path)
+        return result
+    except Exception as exc:
+        # 실패 시 재시도
+        raise self.retry(exc=exc, countdown=60)  # 60초 후 재시도
+
+def batch_analyze_images(image_paths: list[str], batch_size: int = 100):
+    """1만 장의 이미지를 배치로 처리"""
+
+    all_results = []
+
+    # 배치 단위로 분할
+    for i in range(0, len(image_paths), batch_size):
+        batch = image_paths[i:i + batch_size]
+
+        # 배치 실행
+        job = group(process_image_vision_ai.s(img) for img in batch)
+        results = job.apply_async()
+
+        # 결과 수집
+        batch_results = results.get()
+        all_results.extend(batch_results)
+
+        print(f"Progress: {len(all_results)} / {len(image_paths)}")
+
+    return all_results
+
+# 고급: 우선순위 기반 배치 처리
+class PriorityBatchProcessor:
+    """우선순위를 고려한 배치 처리기"""
+
+    def __init__(self):
+        self.high_queue = []
+        self.normal_queue = []
+        self.low_queue = []
+
+    def add_task(self, task: dict, priority: str = "normal"):
+        """작업 추가"""
+        if priority == "high":
+            self.high_queue.append(task)
+        elif priority == "low":
+            self.low_queue.append(task)
+        else:
+            self.normal_queue.append(task)
+
+    async def process_all(self, workers: int = 10):
+        """모든 작업 처리 (우선순위 순서)"""
+        all_tasks = (
+            self.high_queue +
+            self.normal_queue +
+            self.low_queue
+        )
+
+        # 워커 풀로 병렬 처리
+        semaphore = asyncio.Semaphore(workers)
+
+        async def process_with_semaphore(task):
+            async with semaphore:
+                return await self._process_task(task)
+
+        results = await asyncio.gather(*[
+            process_with_semaphore(task)
+            for task in all_tasks
+        ])
+
+        return results
+
+"""
+실전 사례: E-Commerce 야간 배치 작업
+
+시나리오: 매일 자정에 실행되는 배치 작업들
+1. 재고 정산 (100만 SKU)
+2. 주문 통계 (50만 건)
+3. 고객 세그먼트 재계산 (200만 명)
+4. 추천 모델 업데이트 (1억 interaction)
+
+배치 처리 전략:
+- 작업 우선순위: 재고 정산 (HIGH) → 통계 (NORMAL) → 세그먼트 (LOW)
+- 병렬도: 100 워커 (CPU 코어 수에 따라 조정)
+- 체크포인트: 10만 건마다 중간 저장
+- 실패 복구: 실패한 청크만 재처리
+
+성능:
+- Before: 순차 처리 18시간
+- After: 배치 병렬 처리 2.5시간 (86% 단축)
+"""
+```
+
+### 4. 서킷 브레이커 패턴 (Circuit Breaker Pattern)
+
+외부 시스템 장애 시 빠르게 실패하고 복구하는 패턴입니다.
+
+```python
+# 패턴: 요청 → Circuit Breaker → 외부 시스템 (MCP/API)
+
+from enum import Enum
+from datetime import datetime, timedelta
+from typing import Callable, Any
+import asyncio
+
+class CircuitState(Enum):
+    CLOSED = "closed"      # 정상: 모든 요청 통과
+    OPEN = "open"          # 차단: 모든 요청 거부 (빠른 실패)
+    HALF_OPEN = "half_open"  # 반열림: 일부 요청만 테스트
+
+class CircuitBreaker:
+    """서킷 브레이커 패턴 구현"""
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,      # 실패 임계값
+        timeout: int = 60,               # 타임아웃 (초)
+        recovery_timeout: int = 30       # 복구 대기 시간 (초)
+    ):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.recovery_timeout = recovery_timeout
+
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitState.CLOSED
+
+    async def call(self, func: Callable, *args, **kwargs) -> Any:
+        """보호된 함수 호출"""
+
+        # 1. OPEN 상태: 빠른 실패
+        if self.state == CircuitState.OPEN:
+            if self._should_attempt_reset():
+                self.state = CircuitState.HALF_OPEN
+            else:
+                raise CircuitBreakerOpenError(
+                    f"Circuit breaker is OPEN. "
+                    f"Service unavailable. "
+                    f"Retry after {self.recovery_timeout}s"
+                )
+
+        try:
+            # 2. 타임아웃과 함께 함수 실행
+            result = await asyncio.wait_for(
+                func(*args, **kwargs),
+                timeout=self.timeout
+            )
+
+            # 3. 성공: 실패 카운트 리셋
+            self._on_success()
+            return result
+
+        except asyncio.TimeoutError:
+            self._on_failure()
+            raise
+        except Exception as exc:
+            self._on_failure()
+            raise
+
+    def _on_success(self):
+        """요청 성공 시"""
+        self.failure_count = 0
+        if self.state == CircuitState.HALF_OPEN:
+            self.state = CircuitState.CLOSED
+
+    def _on_failure(self):
+        """요청 실패 시"""
+        self.failure_count += 1
+        self.last_failure_time = datetime.now()
+
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
+
+    def _should_attempt_reset(self) -> bool:
+        """복구 시도 여부 판단"""
+        return (
+            self.last_failure_time and
+            datetime.now() - self.last_failure_time >
+            timedelta(seconds=self.recovery_timeout)
+        )
+
+class CircuitBreakerOpenError(Exception):
+    """서킷 브레이커가 OPEN 상태일 때 발생하는 예외"""
+    pass
+
+# MCP 호출에 Circuit Breaker 적용
+class ResilientMCP(Server):
+    """장애에 강한 MCP 서버"""
+
+    def __init__(self):
+        super().__init__("resilient-mcp")
+
+        # 각 외부 시스템마다 독립적인 Circuit Breaker
+        self.circuit_breakers = {
+            "database": CircuitBreaker(failure_threshold=5, recovery_timeout=30),
+            "external_api": CircuitBreaker(failure_threshold=3, recovery_timeout=60),
+            "payment_gateway": CircuitBreaker(failure_threshold=2, recovery_timeout=120)
+        }
+
+    async def call_external_api(self, endpoint: str, data: dict):
+        """Circuit Breaker로 보호된 외부 API 호출"""
+
+        cb = self.circuit_breakers["external_api"]
+
+        try:
+            result = await cb.call(
+                self._make_api_request,
+                endpoint,
+                data
+            )
+            return {"success": True, "data": result}
+
+        except CircuitBreakerOpenError as e:
+            # Fallback: 캐시된 데이터 또는 기본값 반환
+            return {
+                "success": False,
+                "error": str(e),
+                "fallback_data": self._get_cached_data(endpoint)
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def _make_api_request(self, endpoint: str, data: dict):
+        """실제 API 요청"""
+        async with httpx.AsyncClient() as client:
+            response = await client.post(endpoint, json=data)
+            response.raise_for_status()
+            return response.json()
+
+    def _get_cached_data(self, endpoint: str):
+        """Fallback: 캐시된 데이터 반환"""
+        # Redis 등에서 캐시된 데이터 조회
+        return {"cached": True, "data": "fallback_data"}
+
+"""
+실전 사례: 결제 게이트웨이 장애 대응
+
+시나리오: 외부 결제 API가 불안정할 때
+
+Without Circuit Breaker:
+- 각 요청마다 30초 타임아웃 대기
+- 100개 요청 → 3,000초 (50분) 대기
+- 시스템 전체가 느려짐
+- 사용자 경험 최악
+
+With Circuit Breaker:
+- 5번 실패 후 Circuit OPEN
+- 이후 요청들은 즉시 실패 (0.1ms)
+- Fallback: "결제 시스템 점검 중, 잠시 후 다시 시도해주세요"
+- 30초 후 자동으로 복구 시도 (HALF_OPEN)
+- 복구되면 정상 운영 재개 (CLOSED)
+
+효과:
+- 빠른 실패: 50분 → 2초
+- 시스템 안정성: 다른 기능은 정상 작동
+- 자동 복구: 수동 개입 불필요
+- 사용자 경험: 명확한 에러 메시지
+"""
+```
+
+### 5. CQRS + Event Sourcing 패턴
+
+읽기와 쓰기를 분리하고 이벤트 기반으로 상태를 관리하는 패턴입니다.
+
+```python
+# 패턴: Command (쓰기) / Query (읽기) 분리 + Event Store
+
+from typing import List, Dict
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class Event:
+    """도메인 이벤트"""
+    event_id: str
+    event_type: str
+    aggregate_id: str
+    data: dict
+    timestamp: datetime
+    version: int
+
+class EventStore:
+    """이벤트 저장소"""
+
+    def __init__(self, db_pool):
+        self.db_pool = db_pool
+
+    async def append_event(self, event: Event):
+        """이벤트 추가 (불변)"""
+        async with self.db_pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO events (event_id, event_type, aggregate_id, data, timestamp, version)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            """, event.event_id, event.event_type, event.aggregate_id,
+                event.data, event.timestamp, event.version)
+
+    async def get_events(self, aggregate_id: str) -> List[Event]:
+        """특정 Aggregate의 모든 이벤트 조회"""
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM events
+                WHERE aggregate_id = $1
+                ORDER BY version ASC
+            """, aggregate_id)
+            return [Event(**row) for row in rows]
+
+# Command Side (쓰기 모델)
+class OrderCommandHandler:
+    """주문 Command 처리"""
+
+    def __init__(self, event_store: EventStore):
+        self.event_store = event_store
+
+    async def create_order(self, order_id: str, items: List[dict]):
+        """주문 생성 Command"""
+        # 1. 비즈니스 로직 검증
+        if not items:
+            raise ValueError("주문 항목이 비어있습니다")
+
+        # 2. Event 생성
+        event = Event(
+            event_id=str(uuid.uuid4()),
+            event_type="OrderCreated",
+            aggregate_id=order_id,
+            data={"items": items, "status": "PENDING"},
+            timestamp=datetime.now(),
+            version=1
+        )
+
+        # 3. Event Store에 저장
+        await self.event_store.append_event(event)
+
+        # 4. Event Bus에 발행 (비동기 처리)
+        await publish_event(event)
+
+    async def confirm_payment(self, order_id: str, payment_id: str):
+        """결제 확인 Command"""
+        # Event 생성 및 저장
+        event = Event(
+            event_id=str(uuid.uuid4()),
+            event_type="PaymentConfirmed",
+            aggregate_id=order_id,
+            data={"payment_id": payment_id},
+            timestamp=datetime.now(),
+            version=await self._get_next_version(order_id)
+        )
+        await self.event_store.append_event(event)
+        await publish_event(event)
+
+# Query Side (읽기 모델 - Projection)
+class OrderQueryHandler:
+    """주문 Query 처리 (Read Model)"""
+
+    def __init__(self, read_db_pool):
+        self.read_db = read_db_pool  # 읽기 전용 DB (PostgreSQL 복제본)
+
+    async def get_order(self, order_id: str) -> dict:
+        """주문 조회 (빠른 읽기)"""
+        async with self.read_db.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT * FROM order_read_model
+                WHERE order_id = $1
+            """, order_id)
+            return dict(row) if row else None
+
+    async def get_orders_by_status(self, status: str) -> List[dict]:
+        """상태별 주문 목록 조회"""
+        async with self.read_db.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM order_read_model
+                WHERE status = $1
+                ORDER BY created_at DESC
+            """, status)
+            return [dict(row) for row in rows]
+
+# Event Projector (Event → Read Model 동기화)
+class OrderProjector:
+    """Event를 Read Model로 투영"""
+
+    def __init__(self, read_db_pool):
+        self.read_db = read_db_pool
+
+    async def project_event(self, event: Event):
+        """Event를 Read Model에 반영"""
+        if event.event_type == "OrderCreated":
+            await self._create_order_read_model(event)
+        elif event.event_type == "PaymentConfirmed":
+            await self._update_order_status(event, "PAID")
+        elif event.event_type == "OrderShipped":
+            await self._update_order_status(event, "SHIPPED")
+
+    async def _create_order_read_model(self, event: Event):
+        async with self.read_db.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO order_read_model (order_id, items, status, created_at)
+                VALUES ($1, $2, $3, $4)
+            """, event.aggregate_id, event.data['items'],
+                event.data['status'], event.timestamp)
+
+"""
+실전 사례: E-Commerce 주문 시스템
+
+문제: 기존 단일 DB 모델의 한계
+- 읽기와 쓰기가 동일한 DB 사용 → 성능 병목
+- 복잡한 조회 쿼리 → 쓰기 성능 저하
+- 이벤트 히스토리 추적 어려움
+- 데이터 복구 어려움 (삭제/수정 시)
+
+CQRS + Event Sourcing 적용:
+
+Command Side (쓰기):
+- Event Store에만 이벤트 append (O(1) 성능)
+- 절대 수정/삭제 없음 (Immutable)
+- 완벽한 감사 추적 (Audit Trail)
+
+Query Side (읽기):
+- Read Model에서 빠른 조회 (인덱스 최적화)
+- 다양한 View 생성 가능:
+  * order_read_model: 주문 상세
+  * order_statistics: 통계 전용
+  * order_search: 검색 최적화
+
+Event Replay (시간 여행):
+- 과거 특정 시점의 상태 복원 가능
+- 새로운 Read Model 생성 가능
+- 버그 발생 시 이벤트 재처리로 복구
+
+성능:
+- 쓰기 TPS: 10,000 → 50,000 (5배 향상)
+- 읽기 Latency: 500ms → 10ms (50배 향상)
+- DB 부하 분산: 쓰기 DB / 읽기 DB 분리
+"""
+```
+
+### 6. Saga 패턴 (분산 트랜잭션)
+
+여러 MCP 서버에 걸친 트랜잭션을 관리하는 패턴입니다.
+
+```python
+# 패턴: 장기 실행 트랜잭션 (Long-Running Transaction) 관리
+
+from enum import Enum
+from typing import List, Callable, Dict
+import asyncio
+
+class SagaStep:
+    """Saga 단계"""
+    def __init__(
+        self,
+        name: str,
+        action: Callable,        # 정상 동작
+        compensation: Callable    # 보상 트랜잭션 (롤백)
+    ):
+        self.name = name
+        self.action = action
+        self.compensation = compensation
+
+class SagaStatus(Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    COMPENSATING = "compensating"
+    COMPENSATED = "compensated"
+
+class SagaOrchestrator:
+    """Saga 오케스트레이터"""
+
+    def __init__(self):
+        self.steps: List[SagaStep] = []
+        self.completed_steps: List[str] = []
+        self.status = SagaStatus.PENDING
+
+    def add_step(self, step: SagaStep):
+        """Saga 단계 추가"""
+        self.steps.append(step)
+
+    async def execute(self) -> dict:
+        """Saga 실행"""
+        self.status = SagaStatus.IN_PROGRESS
+
+        try:
+            # 각 단계 순차 실행
+            for step in self.steps:
+                try:
+                    result = await step.action()
+                    self.completed_steps.append(step.name)
+                    print(f"✓ {step.name} completed")
+                except Exception as e:
+                    print(f"✗ {step.name} failed: {e}")
+                    # 실패 시 보상 트랜잭션 실행
+                    await self._compensate()
+                    self.status = SagaStatus.FAILED
+                    return {"success": False, "failed_step": step.name}
+
+            self.status = SagaStatus.COMPLETED
+            return {"success": True, "completed_steps": self.completed_steps}
+
+        except Exception as e:
+            await self._compensate()
+            self.status = SagaStatus.FAILED
+            return {"success": False, "error": str(e)}
+
+    async def _compensate(self):
+        """보상 트랜잭션 (롤백)"""
+        self.status = SagaStatus.COMPENSATING
+
+        # 완료된 단계들을 역순으로 보상
+        for step_name in reversed(self.completed_steps):
+            step = next(s for s in self.steps if s.name == step_name)
+            try:
+                await step.compensation()
+                print(f"↶ {step.name} compensated")
+            except Exception as e:
+                print(f"↶ {step.name} compensation failed: {e}")
+
+        self.status = SagaStatus.COMPENSATED
+
+# 실전 예시: E-Commerce 주문 처리 Saga
+async def order_processing_saga(order_id: str, items: List[dict]):
+    """주문 처리 Saga (여러 MCP 서버 조율)"""
+
+    saga = SagaOrchestrator()
+
+    # Step 1: 재고 예약
+    saga.add_step(SagaStep(
+        name="reserve_inventory",
+        action=lambda: inventory_mcp.reserve_items(order_id, items),
+        compensation=lambda: inventory_mcp.release_items(order_id)
+    ))
+
+    # Step 2: 결제 처리
+    saga.add_step(SagaStep(
+        name="process_payment",
+        action=lambda: payment_mcp.charge(order_id, total_amount),
+        compensation=lambda: payment_mcp.refund(order_id)
+    ))
+
+    # Step 3: 배송 신청
+    saga.add_step(SagaStep(
+        name="create_shipment",
+        action=lambda: shipping_mcp.create_shipment(order_id, address),
+        compensation=lambda: shipping_mcp.cancel_shipment(order_id)
+    ))
+
+    # Step 4: 재고 차감
+    saga.add_step(SagaStep(
+        name="deduct_inventory",
+        action=lambda: inventory_mcp.deduct_items(order_id),
+        compensation=lambda: inventory_mcp.restore_items(order_id)
+    ))
+
+    # Step 5: 주문 확정
+    saga.add_step(SagaStep(
+        name="confirm_order",
+        action=lambda: order_mcp.confirm(order_id),
+        compensation=lambda: order_mcp.cancel(order_id)
+    ))
+
+    # Saga 실행
+    result = await saga.execute()
+
+    return result
+
+"""
+실전 시나리오: 주문 처리 중 결제 실패
+
+정상 플로우:
+1. 재고 예약 ✓
+2. 결제 처리 ✓
+3. 배송 신청 ✓
+4. 재고 차감 ✓
+5. 주문 확정 ✓
+
+실패 플로우 (결제 실패 시):
+1. 재고 예약 ✓
+2. 결제 처리 ✗ (카드 한도 초과)
+3. 보상 트랜잭션 시작:
+   ↶ 재고 예약 취소 (재고 복구)
+4. 최종 상태: COMPENSATED
+
+장점:
+- 분산 시스템에서 데이터 일관성 유지
+- 자동 롤백: 수동 개입 불필요
+- 명확한 실패 처리 로직
+- 각 MCP는 독립적으로 동작
+
+Without Saga:
+- 재고는 예약되었지만 결제 실패
+- 수동으로 재고 복구 필요
+- 데이터 불일치 발생
+- 고객 불만 증가
+
+With Saga:
+- 자동으로 재고 복구
+- 데이터 일관성 보장
+- 고객에게 명확한 실패 메시지
+- 시스템 신뢰성 향상
+"""
 ```
 
 ---
