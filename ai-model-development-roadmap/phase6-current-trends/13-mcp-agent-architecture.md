@@ -4247,26 +4247,101 @@ class LegalDocumentOCRMCP(Server):
             }}
             """
 
-            # LLM 호출 (생략)
-            return [TextContent(type="text", text="...")]
+            # LLM으로 계약서 리스크 분석
+            message = self.llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            result = json.loads(message.content[0].text)
+            return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+
+        elif name == "extract_contract_text":
+            pdf_path = arguments['pdf_path']
+            extract_clauses = arguments.get('extract_clauses', True)
+
+            # PDF OCR (PyMuPDF + Claude Vision for 이미지 PDF)
+            import fitz  # PyMuPDF
+            doc = fitz.open(pdf_path)
+
+            full_text = ""
+            clauses = []
+
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+
+                if not text.strip():  # 텍스트가 없으면 이미지 PDF
+                    # Vision AI로 OCR
+                    pix = page.get_pixmap()
+                    img_data = base64.b64encode(pix.tobytes()).decode()
+
+                    message = self.llm_client.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=2048,
+                        messages=[{
+                            "role": "user",
+                            "content": [{
+                                "type": "image",
+                                "source": {"type": "base64", "media_type": "image/png", "data": img_data}
+                            }, {
+                                "type": "text",
+                                "text": "이 계약서 페이지의 텍스트를 정확히 추출해주세요."
+                            }]
+                        }]
+                    )
+                    text = message.content[0].text
+
+                full_text += text + "\n"
+
+            # 조항 구조화 (제1조, 제2조... 등)
+            if extract_clauses:
+                import re
+                clause_pattern = r'제(\d+)조\s*\(([^)]+)\)\s*([^제]+)'
+                matches = re.finditer(clause_pattern, full_text)
+
+                for match in matches:
+                    clauses.append({
+                        "number": int(match.group(1)),
+                        "title": match.group(2).strip(),
+                        "content": match.group(3).strip()
+                    })
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "full_text": full_text,
+                    "clauses": clauses,
+                    "page_count": len(doc)
+                }, ensure_ascii=False)
+            )]
 
 
 # 2. Legal Database MCP
 class LegalDatabaseMCP(Server):
     """판례 검색 + 법률 DB"""
 
+    def __init__(self):
+        super().__init__("legal-db-mcp")
+        # 판례 DB 연결 (대법원 종합법률정보 API)
+        self.api_key = os.getenv("LEGAL_DB_API_KEY")
+
     async def list_tools(self) -> List[Tool]:
         return [
             Tool(
                 name="search_case_law",
-                description="판례 검색",
+                description="판례 검색 (대법원 판례)",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "keywords": {"type": "array", "items": {"type": "string"}},
                         "court": {"type": "string"},
-                        "year_range": {"type": "object"}
-                    }
+                        "year_range": {"type": "object", "properties": {
+                            "start": {"type": "number"},
+                            "end": {"type": "number"}
+                        }}
+                    },
+                    "required": ["keywords"]
                 }
             ),
             Tool(
@@ -4277,51 +4352,594 @@ class LegalDatabaseMCP(Server):
                     "properties": {
                         "statute_name": {"type": "string"},
                         "article_number": {"type": "string"}
-                    }
+                    },
+                    "required": ["statute_name"]
                 }
             )
         ]
 
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "search_case_law":
+            keywords = arguments['keywords']
+            court = arguments.get('court', '대법원')
+            year_range = arguments.get('year_range', {})
+
+            # 대법원 판례 API 호출
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://www.law.go.kr/DRF/lawSearch.do",
+                    params={
+                        "OC": self.api_key,
+                        "target": "prec",  # 판례
+                        "query": " ".join(keywords),
+                        "display": 20
+                    }
+                )
+
+            # XML 파싱
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.text)
+
+            cases = []
+            for item in root.findall('.//PrecSearch'):
+                case_name = item.find('판례명칭').text
+                case_number = item.find('사건번호').text
+                court_name = item.find('법원명').text
+                decision_date = item.find('선고일자').text
+                summary = item.find('판시사항').text
+
+                cases.append({
+                    "name": case_name,
+                    "number": case_number,
+                    "court": court_name,
+                    "date": decision_date,
+                    "summary": summary
+                })
+
+            return [TextContent(
+                type="text",
+                text=json.dumps(cases, ensure_ascii=False)
+            )]
+
+        elif name == "search_statutes":
+            statute_name = arguments['statute_name']
+            article_number = arguments.get('article_number')
+
+            # 법령 API 호출
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://www.law.go.kr/DRF/lawService.do",
+                    params={
+                        "OC": self.api_key,
+                        "target": "law",
+                        "MST": statute_name,
+                        "type": "XML"
+                    }
+                )
+
+            # 법령 조문 파싱
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.text)
+
+            articles = []
+            for article in root.findall('.//조문'):
+                num = article.find('조문번호').text
+                content = article.find('조문내용').text
+
+                if article_number is None or num == article_number:
+                    articles.append({
+                        "number": num,
+                        "content": content
+                    })
+
+            return [TextContent(
+                type="text",
+                text=json.dumps(articles, ensure_ascii=False)
+            )]
+
 
 # 3. Document Generation MCP
 class LegalDocumentGenMCP(Server):
-    """법률 문서 생성"""
+    """법률 문서 생성 (의견서, 계약서 등)"""
+
+    def __init__(self):
+        super().__init__("legal-doc-gen-mcp")
+        self.llm_client = anthropic.Anthropic()
 
     async def list_tools(self) -> List[Tool]:
         return [
             Tool(
                 name="generate_legal_opinion",
-                description="법률 의견서 생성",
+                description="법률 의견서 생성 (PDF)",
                 inputSchema={
                     "type": "object",
                     "properties": {
+                        "client_name": {"type": "string"},
                         "case_summary": {"type": "string"},
-                        "analysis": {"type": "object"},
+                        "risk_analysis": {"type": "object"},
                         "precedents": {"type": "array"}
-                    }
+                    },
+                    "required": ["client_name", "case_summary", "risk_analysis"]
                 }
             )
         ]
+
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "generate_legal_opinion":
+            client = arguments['client_name']
+            summary = arguments['case_summary']
+            risks = arguments['risk_analysis']
+            precedents = arguments.get('precedents', [])
+
+            # LLM으로 의견서 작성
+            prompt = f"""
+            다음 정보를 바탕으로 전문적인 법률 의견서를 작성해주세요:
+
+            의뢰인: {client}
+            사건 요약: {summary}
+            리스크 분석: {json.dumps(risks, ensure_ascii=False)}
+            관련 판례: {json.dumps(precedents, ensure_ascii=False)}
+
+            의견서는 다음 구조로 작성:
+            1. 사건 개요
+            2. 법적 쟁점
+            3. 관련 법령 및 판례
+            4. 리스크 분석
+            5. 결론 및 권고사항
+            """
+
+            message = self.llm_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=8192,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            opinion_text = message.content[0].text
+
+            # PDF 생성
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+
+            # 한글 폰트 등록
+            pdfmetrics.registerFont(TTFont('NanumGothic', '/fonts/NanumGothic.ttf'))
+
+            pdf_path = f"/tmp/legal_opinion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            c = canvas.Canvas(pdf_path, pagesize=A4)
+            c.setFont('NanumGothic', 12)
+
+            # 제목
+            c.setFont('NanumGothic', 16)
+            c.drawString(50, 800, "법률 의견서")
+
+            # 내용 (간략화 - 실제로는 더 복잡한 레이아웃)
+            c.setFont('NanumGothic', 11)
+            y = 750
+            for line in opinion_text.split('\n')[:50]:  # 첫 50줄만
+                c.drawString(50, y, line[:80])  # 줄당 80자
+                y -= 20
+                if y < 50:
+                    c.showPage()
+                    y = 800
+
+            c.save()
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "pdf_path": pdf_path,
+                    "pages": 20,
+                    "word_count": len(opinion_text)
+                }, ensure_ascii=False)
+            )]
 ```
 
-### Agent 실행 시퀀스 (요약)
+### Agent 실행 시퀀스
 
 ```
-사용자: "이 공급계약서 PDF를 분석해서 리스크 있는 조항 찾고, 관련 판례 검색해서 리포트 보내줘"
+사용자: "이 공급계약서 PDF를 분석해서 리스크 있는 조항 찾고, 관련 판례 검색해서 클라이언트에게 리포트 보내줘"
 
-STEP 1: PDF OCR 처리 → 계약서 텍스트 추출 (15개 조항)
-STEP 2: LLM 리스크 분석 → 7개 리스크 조항 발견
-  - HIGH: 3개 (일방적 해지권, 과도한 손해배상, 경쟁 금지)
-  - MEDIUM: 4개
-STEP 3: 각 리스크별 판례 검색 → 23개 관련 판례 발견
-STEP 4: 법률 의견서 자동 생성 (PDF 20페이지)
-STEP 5: 클라이언트에게 이메일 발송
+Agent 생각: "법률 검토 작업이네. 다음 순서로 진행하자:
+1. PDF에서 계약서 텍스트 추출
+2. 각 조항 분석
+3. 리스크 조항 식별
+4. 관련 판례 검색
+5. 법률 의견서 생성
+6. 클라이언트에게 발송"
 
-ROI:
-- 변호사 수동 검토: 4시간 → AI: 3분 (98.8% 단축)
-- 판례 검색: 1.5시간 → 15초
-- 의견서 작성: 2시간 → 2분
-- 청구 가능 시간 증가: 월 80시간 (2000만원 추가 매출)
+
+STEP 1: PDF OCR 처리
+→ legal-document-ocr-mcp.extract_contract_text({
+    "pdf_path": "/uploads/supply_contract_20250118.pdf",
+    "extract_clauses": true
+})
+
+Response: {
+    "full_text": "공급계약서\n\n공급자(이하 '갑'이라 함)와 구매자(이하 '을'이라 함)는...",
+    "clauses": [
+        {
+            "number": 1,
+            "title": "목적",
+            "content": "본 계약은 갑이 을에게 OO제품을 공급하는 조건을 정함을 목적으로 한다."
+        },
+        {
+            "number": 2,
+            "title": "공급 조건",
+            "content": "갑은 을이 요청하는 제품을 30일 이내에 공급한다..."
+        },
+        ...
+        {
+            "number": 15,
+            "title": "계약해지",
+            "content": "갑은 을의 귀책사유 여부와 관계없이 언제든지 본 계약을 해지할 수 있다..."
+        }
+    ],
+    "page_count": 8
+}
+
+Agent 생각: "15개 조항이 추출되었네. 이제 리스크 분석을 하자."
+
+
+STEP 2: 계약서 리스크 분석
+→ legal-document-ocr-mcp.analyze_contract_risks({
+    "contract_text": "전체 계약서 텍스트...",
+    "contract_type": "공급계약"
+})
+
+Response: {
+    "risk_clauses": [
+        {
+            "clause_number": "제15조",
+            "clause_text": "갑은 을의 귀책사유 여부와 관계없이 언제든지 본 계약을 해지할 수 있다.",
+            "risk_level": "HIGH",
+            "risk_type": "일방적 해지권",
+            "description": "갑에게만 무제한적인 해지권을 부여하여 을의 지위가 매우 불안정합니다. 민법 제103조(반사회질서법률행위) 위반 가능성이 있습니다.",
+            "recommendation": "해지 사유를 명확히 규정하고, 을에게도 동등한 해지권을 부여해야 합니다."
+        },
+        {
+            "clause_number": "제12조",
+            "clause_text": "을은 계약 위반 시 공급 대금의 300%를 손해배상금으로 지급한다.",
+            "risk_level": "HIGH",
+            "risk_type": "과도한 손해배상",
+            "description": "손해배상액이 과도하여 민법 제398조(손해배상의 범위) 위반 가능성이 있습니다.",
+            "recommendation": "실제 손해액으로 제한하거나, 최대 공급대금의 100% 이내로 조정 필요."
+        },
+        {
+            "clause_number": "제13조",
+            "clause_text": "을은 계약 종료 후 3년간 유사 제품을 취급할 수 없다.",
+            "risk_level": "HIGH",
+            "risk_type": "경쟁 금지 조항",
+            "description": "기간과 범위가 과도하여 직업선택의 자유를 침해합니다. 헌법 제15조 위반 가능성.",
+            "recommendation": "1년 이내로 단축하고, 지역 및 제품 범위를 명확히 제한해야 합니다."
+        },
+        {
+            "clause_number": "제8조",
+            "clause_text": "제품의 하자에 대한 책임은 인도 후 7일 이내로 한다.",
+            "risk_level": "MEDIUM",
+            "description": "소비자보호법상 최소 책임기간(6개월)보다 짧습니다.",
+            "recommendation": "최소 6개월로 연장 필요."
+        },
+        {
+            "clause_number": "제9조",
+            "clause_text": "대금 지급은 공급 후 90일 이내에 한다.",
+            "risk_level": "MEDIUM",
+            "description": "하도급법상 60일 초과는 위법 가능성.",
+            "recommendation": "60일 이내로 단축 권장."
+        }
+    ],
+    "overall_risk_score": 78,
+    "missing_clauses": [
+        "불가항력 조항",
+        "지적재산권 귀속",
+        "비밀유지 의무",
+        "관할 법원"
+    ]
+}
+
+Agent 생각: "HIGH 리스크 3건 발견! 각각에 대한 판례를 찾아보자."
+
+
+STEP 3: 일방적 해지권 관련 판례 검색
+→ legal-db-mcp.search_case_law({
+    "keywords": ["일방적 해지권", "불공정 계약", "민법 103조"],
+    "court": "대법원",
+    "year_range": {"start": 2015, "end": 2025}
+})
+
+Response: [
+    {
+        "name": "대법원 2020다12345 판결",
+        "number": "2020다12345",
+        "court": "대법원",
+        "date": "2021-05-15",
+        "summary": "공급계약에서 공급자에게만 일방적 해지권을 부여한 조항은 신의성실 원칙에 반하여 무효이다. 구매자는 계약의 계속을 정당하게 기대할 수 있으므로, 해지 사유를 명시하지 않은 일방적 해지권 조항은 민법 제103조에 위배된다."
+    },
+    {
+        "name": "대법원 2018다67890 판결",
+        "number": "2018다67890",
+        "court": "대법원",
+        "date": "2019-03-20",
+        "summary": "프랜차이즈 계약에서 본사가 가맹점에 대해 아무 이유 없이 계약을 해지할 수 있도록 한 조항은 불공정하여 무효이다..."
+    },
+    ...
+    (총 7개 판례)
+]
+
+
+STEP 4: 과도한 손해배상 관련 판례 검색
+→ legal-db-mcp.search_case_law({
+    "keywords": ["과도한 손해배상", "민법 398조", "위약벌"],
+    "court": "대법원"
+})
+
+Response: [
+    {
+        "name": "대법원 2019다23456 판결",
+        "number": "2019다23456",
+        "court": "대법원",
+        "date": "2020-07-10",
+        "summary": "계약금액의 300%에 해당하는 위약금은 과도하여 불합리하다. 법원은 민법 제398조에 따라 상당한 금액으로 감액할 수 있다. 일반적으로 계약금액의 30-50% 수준이 합리적이다."
+    },
+    ...
+    (총 8개 판례)
+]
+
+
+STEP 5: 경쟁금지 조항 관련 판례 검색
+→ legal-db-mcp.search_case_law({
+    "keywords": ["경쟁금지", "직업선택의 자유", "헌법 15조"],
+    "court": "대법원"
+})
+
+Response: [
+    {
+        "name": "대법원 2021다34567 판결",
+        "number": "2021다34567",
+        "court": "대법원",
+        "date": "2022-01-25",
+        "summary": "퇴직 후 3년간의 경쟁금지 조항은 기간이 과도하여 직업선택의 자유를 부당하게 제한한다. 영업비밀 보호를 위해서라도 1년을 초과해서는 안 되며, 지역 및 업종을 명확히 제한해야 한다."
+    },
+    ...
+    (총 6개 판례)
+]
+
+
+STEP 6: 관련 법령 조문 검색
+→ legal-db-mcp.search_statutes({
+    "statute_name": "민법",
+    "article_number": "103"
+})
+
+Response: [
+    {
+        "number": "제103조",
+        "content": "선량한 풍속 기타 사회질서에 위반한 사항을 내용으로 하는 법률행위는 무효로 한다."
+    }
+]
+
+→ legal-db-mcp.search_statutes({
+    "statute_name": "민법",
+    "article_number": "398"
+})
+
+Response: [
+    {
+        "number": "제398조",
+        "content": "①당사자가 손해배상의 방법 또는 금액을 예정한 경우에도 법원은 그것이 부당히 과다한 경우에는 적당히 감액할 수 있다. ②손해배상액을 예정한 경우에도 채권자는 그 손해의 배상을 받을 권리와 별도로 계약을 해제할 수 있다."
+    }
+]
+
+
+STEP 7: 법률 의견서 생성
+→ legal-doc-gen-mcp.generate_legal_opinion({
+    "client_name": "주식회사 ABC",
+    "case_summary": "공급계약서 검토 - 3가지 HIGH 리스크 조항 발견",
+    "risk_analysis": {위의 리스크 분석 결과},
+    "precedents": [검색된 21개 판례]
+})
+
+Response: {
+    "pdf_path": "/tmp/legal_opinion_20250118_143522.pdf",
+    "pages": 24,
+    "word_count": 8542
+}
+
+Agent 생각: "의견서 생성 완료! 이제 클라이언트에게 이메일로 발송하자."
+
+
+STEP 8: 클라이언트에게 이메일 발송
+→ email-mcp.send_email({
+    "to": "client@abc.com",
+    "subject": "[법률검토 완료] 공급계약서 리스크 분석 의견서",
+    "body": """
+안녕하세요, ABC 법무팀 담당자님
+
+의뢰하신 공급계약서에 대한 법률 검토가 완료되었습니다.
+
+📋 검토 결과 요약:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 총 조항 수: 15개
+• 발견된 리스크: 5건
+  - HIGH 리스크: 3건 (즉시 수정 필요)
+  - MEDIUM 리스크: 2건
+• 전체 리스크 점수: 78/100 (높음)
+
+🚨 HIGH 리스크 조항:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. 제15조 - 일방적 해지권
+   → 대법원 판례(2020다12345) 참조 시 무효 가능성 높음
+   → 즉시 수정 권고
+
+2. 제12조 - 과도한 손해배상 (공급대금의 300%)
+   → 대법원 판례(2019다23456)에 따라 감액될 가능성
+   → 100% 이내로 조정 필요
+
+3. 제13조 - 경쟁금지 3년
+   → 대법원 판례(2021다34567)에 따라 무효 가능성
+   → 1년 이내로 단축 권고
+
+📑 상세 분석:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+첨부된 법률 의견서(24페이지)를 참조해주세요.
+- 관련 판례 21건 분석
+- 구체적 수정안 제시
+- 협상 전략 권고사항 포함
+
+💼 권고사항:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. 계약 체결 전 상대방과 조항 수정 협상 필요
+2. 수정이 불가능할 경우 계약 체결 재검토 권장
+3. 추가 법률 자문이 필요한 경우 연락 주시기 바랍니다.
+
+감사합니다.
+""",
+    "attachments": ["/tmp/legal_opinion_20250118_143522.pdf"]
+})
+
+Response: {"sent": true, "message_id": "MSG-2025-001234"}
+
+
+STEP 9: 최종 응답
+"✅ 계약서 법률 검토 완료!
+
+📊 검토 결과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 계약서 페이지: 8페이지
+• 총 조항 수: 15개
+• 처리 시간: 3분 12초
+
+🚨 발견된 리스크:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• HIGH 리스크: 3건
+  1. 제15조 - 일방적 해지권 (관련 판례 7건)
+  2. 제12조 - 과도한 손해배상 (관련 판례 8건)
+  3. 제13조 - 경쟁금지 3년 (관련 판례 6건)
+
+• MEDIUM 리스크: 2건
+  4. 제8조 - 하자담보 기간 부족
+  5. 제9조 - 대금 지급 기한 과다
+
+• 누락된 조항: 4건
+  - 불가항력 조항
+  - 지적재산권 귀속
+  - 비밀유지 의무
+  - 관할 법원
+
+📑 생성된 문서:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 법률 의견서: 24페이지 (8,542단어)
+• 관련 판례 분석: 21건
+• 관련 법령: 민법 제103조, 제398조 외 5개
+
+✅ 완료된 작업:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ PDF OCR 처리
+✓ 15개 조항 구조화
+✓ AI 리스크 분석
+✓ 21개 판례 검색 및 분석
+✓ 법률 의견서 자동 생성 (PDF)
+✓ 클라이언트 이메일 발송
+
+📧 의견서가 client@abc.com으로 발송되었습니다."
+"""
+
+"""
+ROI 분석:
+
+Before (변호사 수동 검토):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 계약서 검토 프로세스:
+  1. PDF 읽기 및 이해: 30분
+  2. 각 조항 분석: 1시간 30분
+  3. 문제 조항 식별: 30분
+  4. 판례 검색 (수동):
+     - 법률 DB 검색: 1시간
+     - 판례 읽기 및 요약: 2시간
+  5. 의견서 작성: 2시간
+  6. 검토 및 수정: 30분
+  → 총 8시간
+
+• 변호사 시간당 비용: 500,000원
+• 총 비용: 4,000,000원/건
+
+• 월간 처리량 (변호사 1명):
+  - 근무시간: 160시간/월
+  - 계약서 검토: 20건/월
+  - 청구 가능 시간: 160시간
+
+After (AI Agent + LLM):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 자동화된 검토:
+  1. PDF OCR: 20초
+  2. AI 조항 분석: 45초
+  3. 자동 판례 검색: 15초
+  4. AI 의견서 생성: 90초
+  5. 이메일 발송: 2초
+  → 총 3분 12초
+
+• AI API 비용: 약 5,000원/건
+  - Claude API: 3,000원
+  - 판례 DB API: 2,000원
+
+• 변호사는 최종 검토만: 20분
+• 변호사 비용: 166,667원/건
+• 총 비용: 171,667원/건
+
+• 월간 처리량 (변호사 1명 + AI):
+  - AI 처리: 3분/건
+  - 변호사 검토: 20분/건
+  - 총 시간: 23분/건
+  - 월간 처리: 416건/월 (20.8배 증가)
+  - 청구 가능 시간: 160시간 유지
+
+💰 재무적 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 건당 비용:
+  - Before: 4,000,000원
+  - After: 171,667원
+  - 절감: 3,828,333원/건 (95.7%)
+
+• 월간 매출 (변호사 1명):
+  - Before: 20건 × 4,000,000원 = 80,000,000원
+  - After: 416건 × 171,667원 = 71,433,472원 (실제 청구는 더 높음)
+
+  그러나 실제로는:
+  - 처리 속도 20배 증가로 더 많은 고객 유치 가능
+  - 가격 경쟁력 (50% 할인 제공 시)
+  - After (50% 할인): 416건 × 2,000,000원 = 832,000,000원/월
+  - 매출 증가: 752,000,000원/월 (940% 증가!)
+
+⏱️ 시간적 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 처리 시간: 8시간 → 23분 (95.2% 단축)
+• 변호사 업무 변화:
+  - Before: 계약서 처음부터 끝까지 검토
+  - After: AI 분석 결과 검증 + 전략 수립
+• 변호사는 고부가가치 업무에 집중:
+  - 협상 전략 수립
+  - 클라이언트 상담
+  - 복잡한 법률 자문
+
+🎯 품질 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 판례 검색: 수동 5-10건 → AI 20+ 건
+• 일관성: 100% (AI는 항상 동일한 기준 적용)
+• 누락 방지: AI가 모든 조항 체계적으로 검토
+• 최신 판례: 자동으로 최신 판례 반영
+
+📈 추가 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 중소기업 접근성 향상:
+  - 기존 400만원 → 200만원 (50% 할인)
+  - 더 많은 기업이 법률 자문 이용 가능
+• 로펌 경쟁력 강화:
+  - 24시간 이내 납품 가능
+  - 대형 로펌 대비 가격 경쟁력
+• 변호사 만족도:
+  - 단순 반복 작업 제거
+  - 전문성 발휘 기회 증가
+"""
 ```
 
 ---
