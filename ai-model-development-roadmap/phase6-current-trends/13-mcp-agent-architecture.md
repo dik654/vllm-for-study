@@ -3515,32 +3515,663 @@ class OCRMCP(Server):
             )]
 
 
-# 2. Accounting ERP MCP (회계 시스템 연동 - 나머지 코드 생략, 위 Banking 예시와 유사)
-# 3. File Storage MCP (파일 저장/관리 - 코드 생략)
+# 2. Accounting ERP MCP
+class AccountingERPMCP(Server):
+    """회계 시스템 연동 (ERP)"""
+
+    def __init__(self):
+        super().__init__("accounting-erp-mcp")
+        self.db_pool = asyncpg.create_pool(
+            "postgresql://accounting_user:pass@db:5432/accounting"
+        )
+
+    async def list_tools(self) -> List[Tool]:
+        return [
+            Tool(
+                name="create_journal_entry",
+                description="회계 분개 생성",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "date": {"type": "string"},
+                        "description": {"type": "string"},
+                        "entries": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "account_code": {"type": "string"},
+                                    "account_name": {"type": "string"},
+                                    "debit": {"type": "number"},
+                                    "credit": {"type": "number"}
+                                }
+                            }
+                        },
+                        "attachments": {"type": "array", "items": {"type": "string"}}
+                    },
+                    "required": ["date", "description", "entries"]
+                }
+            ),
+            Tool(
+                name="check_duplicate_expense",
+                description="중복 비용 처리 확인",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "merchant_name": {"type": "string"},
+                        "amount": {"type": "number"},
+                        "date": {"type": "string"}
+                    },
+                    "required": ["amount", "date"]
+                }
+            ),
+            Tool(
+                name="generate_tax_report",
+                description="세무 신고 자료 생성 (부가세, 소득세)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "report_type": {
+                            "type": "string",
+                            "enum": ["VAT", "INCOME_TAX", "WITHHOLDING_TAX"]
+                        },
+                        "year": {"type": "number"},
+                        "quarter": {"type": "number"}
+                    },
+                    "required": ["report_type", "year"]
+                }
+            )
+        ]
+
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "create_journal_entry":
+            date = arguments['date']
+            description = arguments['description']
+            entries = arguments['entries']
+            attachments = arguments.get('attachments', [])
+
+            # 분개 유효성 검사 (차변 = 대변)
+            total_debit = sum(e['debit'] for e in entries)
+            total_credit = sum(e['credit'] for e in entries)
+
+            if abs(total_debit - total_credit) > 0.01:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "success": False,
+                        "error": f"차변({total_debit:,})과 대변({total_credit:,})이 일치하지 않습니다."
+                    }, ensure_ascii=False)
+                )]
+
+            # DB에 저장
+            async with self.db_pool.acquire() as conn:
+                # 분개 헤더
+                journal_id = await conn.fetchval(
+                    """
+                    INSERT INTO journal_headers (date, description, created_at)
+                    VALUES ($1, $2, NOW())
+                    RETURNING journal_id
+                    """,
+                    date, description
+                )
+
+                # 분개 상세
+                for entry in entries:
+                    await conn.execute(
+                        """
+                        INSERT INTO journal_entries
+                        (journal_id, account_code, account_name, debit, credit)
+                        VALUES ($1, $2, $3, $4, $5)
+                        """,
+                        journal_id,
+                        entry['account_code'],
+                        entry['account_name'],
+                        entry['debit'],
+                        entry['credit']
+                    )
+
+                # 첨부파일
+                for attachment in attachments:
+                    await conn.execute(
+                        """
+                        INSERT INTO journal_attachments (journal_id, file_path)
+                        VALUES ($1, $2)
+                        """,
+                        journal_id, attachment
+                    )
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "journal_id": journal_id,
+                    "total_debit": total_debit,
+                    "total_credit": total_credit
+                }, ensure_ascii=False)
+            )]
+
+        elif name == "check_duplicate_expense":
+            amount = arguments['amount']
+            date = arguments['date']
+            merchant = arguments.get('merchant_name', '')
+
+            async with self.db_pool.acquire() as conn:
+                duplicates = await conn.fetch(
+                    """
+                    SELECT journal_id, description, created_at
+                    FROM journal_headers
+                    WHERE date = $1
+                      AND EXISTS (
+                        SELECT 1 FROM journal_entries
+                        WHERE journal_entries.journal_id = journal_headers.journal_id
+                          AND (debit = $2 OR credit = $2)
+                      )
+                      AND description ILIKE $3
+                    """,
+                    date, amount, f"%{merchant}%"
+                )
+
+            if duplicates:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "is_duplicate": True,
+                        "matches": [dict(d) for d in duplicates]
+                    }, default=str, ensure_ascii=False)
+                )]
+            else:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"is_duplicate": False}, ensure_ascii=False)
+                )]
+
+        elif name == "generate_tax_report":
+            report_type = arguments['report_type']
+            year = arguments['year']
+            quarter = arguments.get('quarter')
+
+            if report_type == "VAT":
+                # 부가가치세 신고서 생성
+                if quarter:
+                    start_date = f"{year}-{quarter*3-2:02d}-01"
+                    end_date = f"{year}-{quarter*3:02d}-31"
+                else:
+                    start_date = f"{year}-01-01"
+                    end_date = f"{year}-12-31"
+
+                async with self.db_pool.acquire() as conn:
+                    # 매출세액
+                    sales_vat = await conn.fetchval(
+                        """
+                        SELECT COALESCE(SUM(credit), 0)
+                        FROM journal_entries
+                        WHERE account_code = '253'  -- 부가세예수금
+                          AND date BETWEEN $1 AND $2
+                        """,
+                        start_date, end_date
+                    )
+
+                    # 매입세액
+                    purchase_vat = await conn.fetchval(
+                        """
+                        SELECT COALESCE(SUM(debit), 0)
+                        FROM journal_entries
+                        WHERE account_code = '136'  -- 부가세대급금
+                          AND date BETWEEN $1 AND $2
+                        """,
+                        start_date, end_date
+                    )
+
+                payable_vat = sales_vat - purchase_vat
+
+                report = {
+                    "report_type": "부가가치세 신고서",
+                    "period": f"{year}년 {quarter}분기" if quarter else f"{year}년",
+                    "sales_vat": float(sales_vat),
+                    "purchase_vat": float(purchase_vat),
+                    "payable_vat": float(payable_vat),
+                    "due_date": f"{year}-{quarter*3+1:02d}-25" if quarter else f"{year+1}-01-25"
+                }
+
+                return [TextContent(
+                    type="text",
+                    text=json.dumps(report, ensure_ascii=False)
+                )]
+
+
+# 3. File Storage MCP
+class FileStorageMCP(Server):
+    """파일 저장 및 관리"""
+
+    def __init__(self):
+        super().__init__("file-storage-mcp")
+        self.storage_path = "/storage/receipts"
+
+    async def list_tools(self) -> List[Tool]:
+        return [
+            Tool(
+                name="list_unprocessed_receipts",
+                description="미처리 영수증 목록 조회",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "folder": {"type": "string"}
+                    }
+                }
+            ),
+            Tool(
+                name="mark_processed",
+                description="영수증 처리 완료 표시",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"}
+                    },
+                    "required": ["file_path"]
+                }
+            )
+        ]
+
+    async def call_tool(self, name: str, arguments: Dict) -> List[TextContent]:
+        if name == "list_unprocessed_receipts":
+            folder = arguments.get('folder', self.storage_path)
+
+            unprocessed = []
+            for filename in os.listdir(folder):
+                if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.pdf')):
+                    filepath = os.path.join(folder, filename)
+                    # processed 플래그 파일이 없으면 미처리
+                    if not os.path.exists(f"{filepath}.processed"):
+                        unprocessed.append({
+                            "filename": filename,
+                            "filepath": filepath,
+                            "size": os.path.getsize(filepath),
+                            "modified": datetime.fromtimestamp(os.path.getmtime(filepath)).isoformat()
+                        })
+
+            return [TextContent(
+                type="text",
+                text=json.dumps(unprocessed, ensure_ascii=False)
+            )]
+
+        elif name == "mark_processed":
+            file_path = arguments['file_path']
+            # .processed 플래그 파일 생성
+            with open(f"{file_path}.processed", 'w') as f:
+                f.write(datetime.now().isoformat())
+
+            return [TextContent(
+                type="text",
+                text=json.dumps({"success": True}, ensure_ascii=False)
+            )]
 ```
 
-### Agent 실행 시퀀스 (요약)
+### Agent 실행 시퀀스
 
 ```
 사용자: "이번 달 받은 모든 영수증 사진을 스캔해서 장부에 자동으로 등록하고, 세금 신고 자료 생성해줘"
 
-→ 47건의 영수증 발견
-→ 각 영수증마다:
-  1. OCR로 정보 추출 (Multimodal LLM 사용)
-  2. LLM으로 자동 분류 (접대비, 사무비 등)
-  3. Vision AI로 위조 여부 확인
-  4. 중복 체크
-  5. 회계 분개 자동 생성
+Agent 생각: "회계 자동화 작업이네. 다음 단계로 진행하자:
+1. 미처리 영수증 파일 찾기
+2. 각 영수증 OCR 처리
+3. 비용 분류 및 진위 확인
+4. 중복 확인
+5. 회계 분개 생성
+6. 세금 신고 자료 생성"
 
-→ 44건 성공 처리 (2건 중복, 1건 위조 의심)
-→ 세금 신고 자료 자동 생성
-→ 처리 시간: 23초
 
-ROI:
-- 수동: 2시간 21분 → AI: 23초 (99.7% 단축)
-- 입력 오류: 5% → 0.1% (50배 감소)
-- 위조 탐지: 불가능 → 92% 정확도
-- 월 34.5만원 절감 (연 414만원)
+STEP 1: 미처리 영수증 찾기
+→ file-storage-mcp.list_unprocessed_receipts({
+    "folder": "/storage/receipts/2025-01"
+})
+
+Response: [
+    {
+        "filename": "receipt_20250103_starbucks.jpg",
+        "filepath": "/storage/receipts/2025-01/receipt_20250103_starbucks.jpg",
+        "size": 245678,
+        "modified": "2025-01-03T14:30:00"
+    },
+    {
+        "filename": "receipt_20250107_taxi.jpg",
+        "filepath": "/storage/receipts/2025-01/receipt_20250107_taxi.jpg",
+        "size": 189234,
+        "modified": "2025-01-07T09:15:00"
+    },
+    {
+        "filename": "receipt_20250115_office_depot.jpg",
+        "filepath": "/storage/receipts/2025-01/receipt_20250115_office_depot.jpg",
+        "size": 312456,
+        "modified": "2025-01-15T16:45:00"
+    },
+    ... (총 47건의 미처리 영수증)
+]
+
+Agent 생각: "47건의 영수증을 처리해야 하네. 하나씩 OCR 처리하자."
+
+
+STEP 2: 첫 번째 영수증 OCR 처리
+→ ocr-mcp.extract_receipt_info({
+    "image_path": "/storage/receipts/2025-01/receipt_20250103_starbucks.jpg"
+})
+
+Response: {
+    "merchant_name": "스타벅스 강남점",
+    "merchant_address": "서울시 강남구 테헤란로 123",
+    "business_number": "123-45-67890",
+    "date": "2025-01-03 14:23:15",
+    "total_amount": 18500,
+    "tax_amount": 1682,
+    "payment_method": "신용카드",
+    "items": [
+        {"name": "아메리카노 Tall", "quantity": 2, "price": 8000},
+        {"name": "카페라떼 Grande", "quantity": 1, "price": 10500}
+    ],
+    "category_hint": "식사/음료"
+}
+
+Agent 생각: "OCR 성공! 이제 이 비용을 분류하고 진위를 확인해야겠다."
+
+
+STEP 3: 비용 분류
+→ ocr-mcp.classify_expense({
+    "merchant_name": "스타벅스 강남점",
+    "items": ["아메리카노 Tall", "카페라떼 Grande"],
+    "amount": 18500
+})
+
+Response: {
+    "category": "복리후생비",
+    "confidence": 0.85,
+    "reason": "사내 직원 음료 구매로 추정. 접대비가 아닌 복리후생비로 분류하는 것이 적절함.",
+    "tax_deductible": true,
+    "requires_approval": false
+}
+
+
+STEP 4: 문서 진위 확인
+→ ocr-mcp.verify_document_authenticity({
+    "image_path": "/storage/receipts/2025-01/receipt_20250103_starbucks.jpg"
+})
+
+Response: {
+    "is_authentic": true,
+    "confidence": 0.92,
+    "suspicious_areas": [],
+    "recommendation": "APPROVE"
+}
+
+
+STEP 5: 중복 확인
+→ accounting-erp-mcp.check_duplicate_expense({
+    "merchant_name": "스타벅스",
+    "amount": 18500,
+    "date": "2025-01-03"
+})
+
+Response: {
+    "is_duplicate": false
+}
+
+Agent 생각: "중복 아니고, 진위도 확인됐어. 분개를 생성하자."
+
+
+STEP 6: 회계 분개 생성
+→ accounting-erp-mcp.create_journal_entry({
+    "date": "2025-01-03",
+    "description": "스타벅스 강남점 - 직원 음료 구매",
+    "entries": [
+        {
+            "account_code": "820",
+            "account_name": "복리후생비",
+            "debit": 18500,
+            "credit": 0
+        },
+        {
+            "account_code": "252",
+            "account_name": "미지급금",
+            "debit": 0,
+            "credit": 18500
+        }
+    ],
+    "attachments": ["/storage/receipts/2025-01/receipt_20250103_starbucks.jpg"]
+})
+
+Response: {
+    "success": true,
+    "journal_id": 2025001234,
+    "total_debit": 18500,
+    "total_credit": 18500
+}
+
+
+STEP 7: 처리 완료 표시
+→ file-storage-mcp.mark_processed({
+    "file_path": "/storage/receipts/2025-01/receipt_20250103_starbucks.jpg"
+})
+
+Response: {"success": true}
+
+Agent 생각: "첫 번째 영수증 처리 완료! 나머지 46건도 동일하게 처리하자."
+
+
+STEP 8~53: 나머지 46건 영수증 처리 (병렬 처리)
+
+[각 영수증마다 Steps 2-7 반복]
+
+처리 결과 요약:
+- 성공: 44건
+- 중복: 2건 (스킵)
+  * receipt_20250112_starbucks.jpg → 이미 처리됨
+  * receipt_20250118_gs25.jpg → 중복 발견
+- 위조 의심: 1건 (수동 검토 필요)
+  * receipt_20250120_restaurant.jpg → 폰트 불일치 (Confidence: 0.45)
+
+총 처리 금액: 3,245,800원
+
+
+STEP 54: 1월 부가가치세 집계
+→ accounting-erp-mcp.generate_tax_report({
+    "report_type": "VAT",
+    "year": 2025,
+    "quarter": 1  # 1분기 (1-3월, 1월 데이터만 있음)
+})
+
+Response: {
+    "report_type": "부가가치세 신고서",
+    "period": "2025년 1분기",
+    "sales_vat": 8520000,    # 매출세액
+    "purchase_vat": 2840000, # 매입세액 (1월 누적)
+    "payable_vat": 5680000,  # 납부세액
+    "due_date": "2025-04-25"
+}
+
+
+STEP 55: 계정과목별 집계
+→ [각 계정과목별로 조회하여 집계]
+
+결과:
+- 복리후생비 (820): 450,000원
+- 여비교통비 (810): 890,000원
+- 접대비 (800): 1,200,000원
+- 사무용품비 (730): 380,000원
+- 통신비 (740): 325,800원
+총 44건, 3,245,800원
+
+
+STEP 56: 최종 응답
+"✅ 1월 영수증 자동 처리 완료!
+
+📊 처리 결과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 총 영수증 수: 47건
+• ✅ 성공 처리: 44건
+• ⚠️  중복 발견: 2건 (스킵)
+  - receipt_20250112_starbucks.jpg
+  - receipt_20250118_gs25.jpg
+• 🚨 수동 검토 필요: 1건 (위조 의심)
+  - receipt_20250120_restaurant.jpg
+    → 폰트 불일치, Confidence: 0.45
+
+💰 금액 집계:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 총 비용: 3,245,800원
+
+계정과목별 분류:
+  - 복리후생비: 450,000원 (14%)
+  - 여비교통비: 890,000원 (27%)
+  - 접대비: 1,200,000원 (37%)
+  - 사무용품비: 380,000원 (12%)
+  - 통신비: 325,800원 (10%)
+
+📝 생성된 분개: 44건
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+모든 영수증이 회계 시스템에 자동 등록되었습니다.
+첨부파일과 함께 저장되어 감사 추적이 가능합니다.
+
+🧾 세금 신고 자료:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2025년 1분기 부가가치세]
+• 매출세액: 8,520,000원
+• 매입세액: 2,840,000원 (1월 누적)
+• 납부세액: 5,680,000원
+• 신고 기한: 2025-04-25
+
+⚠️  수동 검토 필요 항목:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. receipt_20250120_restaurant.jpg
+   → 위조 의심 (폰트 불일치, Confidence: 0.45)
+   → 파일 경로: /storage/receipts/2025-01/receipt_20250120_restaurant.jpg
+   → 담당자 확인 필요
+
+📎 첨부 파일:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 전체 분개 장부: /reports/journal_entries_202501.xlsx
+• 세무 신고 자료: /reports/vat_report_2025_Q1.pdf
+• 비용 분석 차트: /reports/expense_analysis_202501.png
+
+⏱️ 처리 시간: 23초 (영수증 47건)
+💾 모든 데이터는 회계 시스템에 저장되었습니다."
+"""
+
+"""
+ROI 분석:
+
+Before (수동 처리):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 회계 담당자가 영수증 하나하나 수기 입력
+• 1건당 평균 시간:
+  - 영수증 확인: 30초
+  - 금액/날짜 입력: 1분
+  - 계정과목 분류: 30초 (판단 필요)
+  - 분개 작성: 1분
+  - ERP 입력: 30초
+  → 총 3분 30초/건
+
+• 47건 처리: 164.5분 (2시간 44분)
+• 입력 오류율: 5% (금액, 날짜 오타, 분류 실수)
+• 중복 처리: 월 2-3건 발생 (수동으로 찾기 어려움)
+• 위조 영수증 탐지: 거의 불가능 (육안으로 판단)
+
+• 월말 세무 자료 준비:
+  - 계정과목별 집계: 30분
+  - 부가세 계산: 20분
+  - 리포트 작성: 40분
+  - 검증 및 수정: 20분
+  → 총 110분 (1시간 50분)
+
+월간 총 시간 (영수증 200건 기준):
+• 입력: 200건 × 3.5분 = 700분 (11시간 40분)
+• 세무 자료: 110분 (1시간 50분)
+• 총: 810분 (13시간 30분)
+
+인건비: 13.5시간 × 50,000원/시간 = 675,000원/월
+
+After (AI Agent + OCR):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• OCR + Multimodal LLM 자동 처리:
+  - 영수증 읽기: 2초/건 (Vision AI)
+  - 자동 분류: 0.5초/건 (LLM 분석)
+  - 위조 탐지: 1초/건 (Vision AI)
+  - 분개 생성: 0.5초/건
+  - DB 저장: 0.3초/건
+  → 총 4.3초/건
+
+• 47건 처리: 23초 (병렬 처리 가속)
+• 200건 처리: 약 90초 (1.5분)
+
+• 입력 오류율: 0.1% (OCR 인식 오류만, 자동 검증으로 최소화)
+• 중복 자동 탐지: 100% (DB 조회로 즉시 발견)
+• 위조 영수증 탐지: 92% 정확도 (Vision AI 분석)
+
+• 월말 세무 자료:
+  - 자동 집계: 3초
+  - 자동 계산: 1초
+  - 자동 리포트: 5초
+  → 총 9초
+
+월간 총 시간 (영수증 200건 기준):
+• 입력: 1.5분
+• 세무 자료: 9초
+• 수동 검토: 10분 (위조 의심 건만)
+• 총: 약 12분
+
+인건비: 0.2시간 × 50,000원 = 10,000원/월
+
+💰 재무적 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 인건비 절감:
+  - Before: 675,000원/월
+  - After: 10,000원/월 (수동 검토만)
+  - 절감: 665,000원/월 (약 798만원/년)
+
+• OCR API 비용:
+  - Claude Vision API: 영수증당 약 100원
+  - 200건 × 100원 = 20,000원/월
+  - 연간: 240,000원
+
+• 시스템 운영 비용:
+  - 서버 비용: 월 30,000원 (클라우드 GPU)
+  - 저장소: 월 10,000원
+  - 총: 40,000원/월 (480,000원/년)
+
+• 순 절감:
+  - 월: 665,000 - 20,000 - 40,000 = 605,000원
+  - 연: 7,260,000원
+
+⏱️ 시간적 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 월간 처리 시간: 13.5시간 → 12분 (99.1% 단축)
+• 회계 담당자는 전략적 업무에 집중
+  - 재무 분석
+  - 예산 관리
+  - 세무 전략 수립
+• 월말 마감: 반나절 → 10분
+
+🎯 품질 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 입력 오류: 5% → 0.1% (50배 감소)
+• 중복 처리 방지: 100% (자동 감지)
+• 위조 영수증 탐지: 0% → 92% (새로운 기능)
+• 세무 조사 대응: 완벽한 감사 추적
+  - 모든 영수증 이미지 첨부
+  - 처리 이력 자동 기록
+  - 분개 자동 검증
+
+📈 추가 효과:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• 실시간 비용 모니터링 가능
+  - 일별/주별/월별 지출 트렌드
+  - 계정과목별 실시간 집계
+  - 예산 대비 실적 자동 분석
+• 이상 지출 즉시 감지
+  - 평균의 300% 초과 시 알림
+  - 특정 카테고리 급증 감지
+• CFO에게 실시간 대시보드 제공
+• 연말 세무 조사 대비 완벽
+  - 모든 증빙 디지털화
+  - 자동 감사 추적
+"""
 ```
 
 ---
